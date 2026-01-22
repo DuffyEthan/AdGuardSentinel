@@ -21,6 +21,8 @@ stages:
 - performance
 - cleanup
 - secret-detection
+- python-build
+- python-test
 sast:
   stage: test
 include:
@@ -29,3 +31,20 @@ variables:
   SECRET_DETECTION_ENABLED: 'true'
 secret_detection:
   stage: secret-detection
+python_build:
+  stage: python-build
+  image: python:3.11
+  script:
+    - echo "Uprading pip + installing dependencies..."
+    - python -m pip install --upgrade pip
+    - pip install -r requirements.txt
+  only:
+    - branches
+python_test:
+  stage: python-test
+  image: python:3.11
+  script:
+    - echo "Running Python tests"
+    - pytest #automatically finds test files
+  only:
+    - branches
