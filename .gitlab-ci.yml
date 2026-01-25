@@ -22,6 +22,9 @@ python_build:
     - echo "Upgrading pip + installing dependencies..."
     - python -m pip install --upgrade pip
     - pip install -r requirements.txt
+  cache:
+    paths:
+      - .cache/pip
   only:
     - branches
 
@@ -34,6 +37,10 @@ python_test:
     - docker
   script:
     - echo "Running Python tests"
+    - pip install -r requirements.txt
     - pytest #automatically finds test files
+  cache:
+    paths:
+      - .cache/pip
   only:
     - branches
