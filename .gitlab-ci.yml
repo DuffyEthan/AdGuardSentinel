@@ -1,4 +1,6 @@
 stages:
+- build
+- test
 - python-build
 - python-test
 - secret-detection
