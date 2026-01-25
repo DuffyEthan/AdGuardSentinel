@@ -1,34 +1,17 @@
-# You can override the included template(s) by including variable overrides
-# SAST customization: https://docs.gitlab.com/ee/user/application_security/sast/#customizing-the-sast-settings
-# Secret Detection customization: https://docs.gitlab.com/user/application_security/secret_detection/pipeline/configure
-# Dependency Scanning customization: https://docs.gitlab.com/ee/user/application_security/dependency_scanning/#customizing-the-dependency-scanning-settings
-# Container Scanning customization: https://docs.gitlab.com/ee/user/application_security/container_scanning/#customizing-the-container-scanning-settings
-# Note that environment variables can be set in several places
-# See https://docs.gitlab.com/ee/ci/variables/#cicd-variable-precedence
 stages:
-- build
-- test
-- deploy
-- review
-- dast
-- staging
-- canary
-- production
-- incremental rollout 10%
-- incremental rollout 25%
-- incremental rollout 50%
-- incremental rollout 100%
-- performance
-- cleanup
-- secret-detection
 - python-build
 - python-test
+- secret-detection
+- test
 sast:
   stage: test
 include:
 - template: Auto-DevOps.gitlab-ci.yml
 variables:
   SECRET_DETECTION_ENABLED: 'true'
+  AUTO_DEVOPS_BUILD_IMAGE: 'false'
+  AUTO_DEVOPS_TEST: 'false'
+  AUTO_DEVOPS_DEPLOY: 'false'
 secret_detection:
   stage: secret-detection
 python_build:
@@ -43,6 +26,8 @@ python_build:
 python_test:
   stage: python-test
   image: python:3.11
+  needs:
+    - python_build
   script:
     - echo "Running Python tests"
     - pytest #automatically finds test files
