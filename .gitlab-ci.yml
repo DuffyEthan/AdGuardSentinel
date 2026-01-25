@@ -16,17 +16,22 @@ variables:
 python_build:
   stage: python-build
   image: python:3.11
+  tags:
+    - docker
   script:
     - echo "Upgrading pip + installing dependencies..."
     - python -m pip install --upgrade pip
     - pip install -r requirements.txt
   only:
     - branches
+
 python_test:
   stage: python-test
   image: python:3.11
   needs:
     - python_build
+  tags:
+    - docker
   script:
     - echo "Running Python tests"
     - pytest #automatically finds test files
