@@ -61,6 +61,7 @@ class MarkovDataGenerator(DataGenerator):
         self.current = self.states[next]
         return data
 
+# dummy functions that just print the current state
 def foo(x):
     print("foo")
     return (0,0,0,0)
@@ -69,6 +70,7 @@ def bar(x):
     print("bar")
     return (0,0,0,0)
 
+# dict representation of our graph with functions for each node
 bimodal = {
     "normal": {
         "function": foo,
