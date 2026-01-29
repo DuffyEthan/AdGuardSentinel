@@ -12,6 +12,11 @@ DataPacket = tuple[datetime, int, int, int]
 # functional interface so I can do the markov thing
 DataProducer = Callable[[InternalState], DataPacket]
 
+# this is ugly but the internal part just matches:
+# "my_node": {
+#    "fun": my_function,
+#    "edges": [("my_node", 0.5), ("b", 0.5)]
+# }
 MarkovStateDict = dict[str, dict[str, DataProducer|list[tuple[str, float]]]]
 
 class DataGenerator(ABC):
@@ -62,11 +67,11 @@ class MarkovDataGenerator(DataGenerator):
         return data
 
 # dummy functions that just print the current state
-def foo(x):
+def foo(_):
     print("foo")
     return (0,0,0,0)
 
-def bar(x):
+def bar(_):
     print("bar")
     return (0,0,0,0)
 
