@@ -2,7 +2,7 @@
 
 ## Linux
 
-### Timescale and PostgresSQL setup
+### Timescale and PostgreSQL setup
 [See https://www.tigerdata.com/docs/self-hosted/latest/install/installation-linux#install-timescale_db-on-linux for other Linux Distro]
 
 ```
@@ -45,3 +45,6 @@ CREATE EXTENSION IF NOT EXISTS timescaledb;
 ```
 # apt install python3 python3-psycopg
 ```
+
+## Contributors
+Alexander Nevin
