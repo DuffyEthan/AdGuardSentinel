@@ -47,4 +47,5 @@ CREATE EXTENSION IF NOT EXISTS timescaledb;
 ```
 
 ## Contributors
-Alexander Nevin, Alex Leung
+* Alexander Nevin
+* Alex Leung
