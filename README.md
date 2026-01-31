@@ -5,8 +5,8 @@
 ### Timescale and PostgreSQL setup
 [See https://www.tigerdata.com/docs/self-hosted/latest/install/installation-linux#install-timescale_db-on-linux for other Linux Distro]
 
+#### Apt:
 ```
-Apt:
 # apt install gnupg postgresql-common apt-transport-https lsb-release wget
 # /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh
 # echo "deb https://packagecloud.io/timescale/timescaledb/debian/ $(lsb_release -c -s) main" | sudo tee /etc/apt/sources.list.d/timescaledb.list
@@ -47,4 +47,4 @@ CREATE EXTENSION IF NOT EXISTS timescaledb;
 ```
 
 ## Contributors
-Alexander Nevin
+Alexander Nevin, Alex Leung
