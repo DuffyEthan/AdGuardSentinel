@@ -6,14 +6,16 @@ build:
   stage: build
   image: python:3.11
   tags:
-    - docker
+    - docker-medium
   script:
     - echo "Upgrading pip + installing dependencies..."
     - python -m pip install --upgrade pip
     - pip install -r requirements.txt
   cache:
+    key: pip-cache
     paths:
       - .cache/pip
+    policy: push
   only:
     - branches
 
@@ -23,13 +25,10 @@ test:
   needs:
     - build
   tags:
-    - docker
+    - docker-medium
   script:
     - echo "Running Python tests"
     - pip install -r requirements.txt
     - pytest || true #automatically finds test files, won't fail if no tests
-  cache:
-    paths:
-      - .cache/pip
   only:
     - branches
