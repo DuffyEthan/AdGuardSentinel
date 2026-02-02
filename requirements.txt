@@ -1,4 +1,5 @@
 streamlit
 psycopg[binary]
-pandas
+pandas>=2.3.3
+SQLAlchemy
 matplotlib

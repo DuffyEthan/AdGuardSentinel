@@ -11,5 +11,17 @@ services:
       - db_data:/var/lib/postgresql/data
       - ./db/init:/docker-entrypoint-initdb.d:ro
 
+  app:
+    build: .
+    env_file:
+      - ./.secrets/.env
+    environment:
+      DATABASE_URL: postgresql://$${POSTGRES_USER}:$${POSTGRES_PASSWORD}@db:5432/$${POSTGRES_DB}
+    depends_on:
+      - db
+    ports:
+      - "8501:8501"
+    command: ["streamlit", "run", "frontend/frontend.py"]
+
 volumes:
   db_data:
