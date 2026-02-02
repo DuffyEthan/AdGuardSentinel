@@ -1,17 +1,20 @@
 stages:
 - python-build
 - python-test
-- test
+- sast
 - secret-detection
 
 include:
 - template: Security/Secret-Detection.gitlab-ci.yml
+- template: Security/Secret-Detection.gitlab-ci.yml
 
 variables:
-  SECRET_DETECTION_ENABLED: 'false'
-  AUTO_DEVOPS_BUILD_IMAGE: 'false'
-  AUTO_DEVOPS_TEST: 'false'
-  AUTO_DEVOPS_DEPLOY: 'false'
+SAST_EXCLUDED_PATHS: "node_modules, venv, .venv, .cache, __pycache__"
+SECRET_DETECTION_EXCLUDED_PATHS: "node_modules, venv, .venv, .cache, __pycache__"
+
+AUTO_DEVOPS_BUILD_IMAGE: "false"
+AUTO_DEVOPS_TEST: "false"
+AUTO_DEVOPS_DEPLOY: "false"
 
 python_build:
   stage: python-build
