@@ -2,14 +2,6 @@ include:
 - template: Security/SAST.gitlab-ci.yml
 - template: Security/Secret-Detection.gitlab-ci.yml
 
-before_script:
-  -echo "Cleaning up disk space..."
-  -df -h
-  -apt-get update && apt-get install -y ncdu || true
-  -ncdu -x / || true
-  -rm -rf /tmp/* || true
-  -rm 0rf /var/tmp/* || true
-
 build:
   stage: build
   image: python:3.11
@@ -18,9 +10,8 @@ build:
   script:
     - echo "Upgrading pip + installing dependencies..."
     - python -m pip install --upgrade pip
-    - pip install -r requirements.txt
+    - pip install -r requirements.txt --no-cache-dir
   cache:
-    key: pip-cache
     paths:
       - .cache/pip
     policy: push
@@ -36,7 +27,18 @@ test:
     - docker
   script:
     - echo "Running Python tests"
-    - pip install -r requirements.txt
+    - pip install -r requirements.txt --no-cache-dir
     - pytest || true #automatically finds test files, won't fail if no tests
+  cache:
+    paths:
+      - .cache/pip
   only:
     - branches
+
+.sast:
+  tags:
+    - docker
+
+.secret_detection:
+  tags:
+    - docker
