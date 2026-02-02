@@ -1,1 +1,5 @@
-pytest>=7.0.0
+streamlit
+psycopg[binary]
+pandas>=2.3.3
+SQLAlchemy
+matplotlib

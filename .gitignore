@@ -4,3 +4,13 @@
 # IDE
 .vscode/
 .idea/
+
+# secrets
+.secrets/*
+!.secrets/.env.example
+
+.env
+*.env
+
+# streamlit secrets
+.streamlit/secrets.toml

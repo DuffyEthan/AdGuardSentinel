@@ -1,0 +1,27 @@
+services:
+  db:
+    image: timescale/timescaledb:latest-pg16
+    container_name: app_timescale_db
+    restart: unless-stopped
+    env_file:
+      - ./.secrets/.env
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+
+  app:
+    build: .
+    env_file:
+      - ./.secrets/.env
+    environment:
+      DATABASE_URL: postgresql://$${POSTGRES_USER}:$${POSTGRES_PASSWORD}@db:5432/$${POSTGRES_DB}
+    depends_on:
+      - db
+    ports:
+      - "8501:8501"
+    command: ["streamlit", "run", "frontend/frontend.py"]
+
+volumes:
+  db_data:
