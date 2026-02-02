@@ -1,43 +1,33 @@
-stages:
-- python-build
-- python-test
-- test
-- secret-detection
-
 include:
+- template: Security/SAST.gitlab-ci.yml
 - template: Security/Secret-Detection.gitlab-ci.yml
 
-variables:
-  SECRET_DETECTION_ENABLED: 'false'
-  AUTO_DEVOPS_BUILD_IMAGE: 'false'
-  AUTO_DEVOPS_TEST: 'false'
-  AUTO_DEVOPS_DEPLOY: 'false'
-
-python_build:
-  stage: python-build
-  image: python:3.11
+default:
   tags:
     - docker
+
+build:
+  stage: build
+  image: python:3.11
   script:
     - echo "Upgrading pip + installing dependencies..."
     - python -m pip install --upgrade pip
-    - pip install -r requirements.txt
+    - pip install -r requirements.txt --no-cache-dir
   cache:
     paths:
       - .cache/pip
+    policy: push
   only:
     - branches
 
-python_test:
-  stage: python-test
+test:
+  stage: test
   image: python:3.11
   needs:
-    - python_build
-  tags:
-    - docker
+    - build
   script:
     - echo "Running Python tests"
-    - pip install -r requirements.txt
+    - pip install -r requirements.txt --no-cache-dir
     - pytest || true #automatically finds test files, won't fail if no tests
   cache:
     paths:
