@@ -56,9 +56,11 @@ mirror_to_github:
       git config --global user.email "duffyet@tcd.ie"
       git config --global user.name "duffyet"
 
-      echo "https://${GITHUB_TOKEN}:@github.com" > ~/.git-credentials
+      echo "https://DuffyEthan:${GITHUB_TOKEN}@github.com" > ~/.git-credentials
       git config --global credential.helper 'store --file ~/.git-credentials'
 
+      git checkout -B ${CI_COMMIT_REF_NAME}
+      
       git remote add github https://github.com/${GITHUB_REPO}.git 2>/dev/null || git remote set-url github https://github.com/${GITHUB_REPO}.git
 
       git push --force github HEAD:${CI_COMMIT_REF_NAME}
