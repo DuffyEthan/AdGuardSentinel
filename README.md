@@ -48,5 +48,6 @@ CREATE EXTENSION IF NOT EXISTS timescaledb;
 
 ## Contributors
 * Alexander Nevin
-* Thomas Shanahan
 * Alex Leung
+* Zofia Marta Sekulska
+* Thomas Shanahan
