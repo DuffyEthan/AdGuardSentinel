@@ -50,3 +50,4 @@ CREATE EXTENSION IF NOT EXISTS timescaledb;
 * Alexander Nevin
 * Alex Leung
 * Zofia Marta Sekulska
+* Thomas Shanahan
