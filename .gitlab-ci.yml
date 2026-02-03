@@ -12,6 +12,7 @@ stages:
   - deploy
 
 variables:
+  GIT_DEPTH: 0
   GITHUB_REPO: "DuffyEthan/AdGuardSentinel"
 
 build:
@@ -60,7 +61,7 @@ mirror_to_github:
       git config --global credential.helper 'store --file ~/.git-credentials'
 
       git fetch --all --tags
-      
+
       git checkout -B ${CI_COMMIT_REF_NAME}
 
       git remote add github https://github.com/${GITHUB_REPO}.git 2>/dev/null || git remote set-url github https://github.com/${GITHUB_REPO}.git
