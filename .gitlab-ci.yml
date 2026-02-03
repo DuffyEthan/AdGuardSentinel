@@ -6,6 +6,15 @@ default:
   tags:
     - docker
 
+stages:
+  - build
+  - test
+  - deploy
+
+variables:
+  GIT_DEPTH: 0
+  GITHUB_REPO: "DuffyEthan/AdGuardSentinel"
+
 build:
   stage: build
   image: python:3.11
@@ -34,3 +43,33 @@ test:
       - .cache/pip
   only:
     - branches
+
+mirror_to_github:
+  stage: deploy
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache git 
+  script:
+    - |
+      echo "Mirroring ${CI_COMMIT_REF_NAME} branch to GitHub..."
+
+
+      git config --global user.email "duffyet@tcd.ie"
+      git config --global user.name "duffyet"
+
+      echo "https://DuffyEthan:${GITHUB_TOKEN}@github.com" > ~/.git-credentials
+      git config --global credential.helper 'store --file ~/.git-credentials'
+
+      git fetch --all --tags
+
+      git checkout -B ${CI_COMMIT_REF_NAME}
+
+      git remote add github https://github.com/${GITHUB_REPO}.git 2>/dev/null || git remote set-url github https://github.com/${GITHUB_REPO}.git
+
+      git push --force github HEAD:${CI_COMMIT_REF_NAME}
+
+      echo "Successfully mirrored to GitHub"
+
+  only:
+    - branches
+  when: manual #safety
