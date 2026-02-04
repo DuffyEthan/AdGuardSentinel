@@ -5,6 +5,8 @@
 .vscode/
 .idea/
 
+CLAUDE.md
+
 # secrets
 .secrets/*
 !.secrets/.env.example
