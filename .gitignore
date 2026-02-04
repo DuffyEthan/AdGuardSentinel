@@ -6,3 +6,13 @@
 .idea/
 
 CLAUDE.md
+
+# secrets
+.secrets/*
+!.secrets/.env.example
+
+.env
+*.env
+
+# streamlit secrets
+.streamlit/secrets.toml
