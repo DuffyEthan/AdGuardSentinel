@@ -70,6 +70,6 @@ mirror_to_github:
 
       echo "Successfully mirrored to GitHub"
 
-  only:
-    - branches
-  when: manual #safety
+  rules:
+    - if: $CI_COMMIT_BRANCH == "develop"
+      when: on_success
