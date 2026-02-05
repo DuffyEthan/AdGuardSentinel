@@ -85,25 +85,23 @@ docker_build:
 docker_test:
   stage: docker-test
   image: docker:latest
+  variables:
+    DOCKER_BUILDKIT: 1
   needs: 
     - docker_build
-  before_script:
-    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
   script:
     - |
       echo "Testing Docker image."
+      docker build -t local-test .
 
-      docker pull "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
+      echo "Testing Streamlit."
+      docker run --rm local-test streamlit --version
 
-      docker run --rm "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA" python --version
+      echo "Test app entry point."
+      timeout 5s docker run --rm -p 8501:8501 local-test || \
 
-      echo "Also testing the entry point."
-
-      timeout 5s docker run --rm "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA" || \
-
-      echo "Checking packages."
-
-      docker run --rm "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA" pip list --format=columns | head -10
+      echo "check dependencies"
+      docker run --rm local-test pip list | grep -E "(streamlit|pandas|sqlalchemy)" | head -5
 
       echo "Docker testing passed!"
   only:
