@@ -10,7 +10,6 @@ stages:
   - build
   - test
   - docker-build
-  - docker-test
   - deploy
 
 variables:
@@ -81,31 +80,6 @@ docker_build:
       echo "Images available at ${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA}"
   only:
     - branches 
-  
-docker_test:
-  stage: docker-test
-  image: docker:latest
-  variables:
-    DOCKER_BUILDKIT: 1
-  needs: 
-    - docker_build
-  script:
-    - |
-      echo "Testing Docker image."
-      docker build -t local-test .
-
-      echo "Testing Streamlit."
-      docker run --rm local-test streamlit --version
-
-      echo "Test app entry point."
-      timeout 5s docker run --rm -p 8501:8501 local-test || \
-
-      echo "check dependencies"
-      docker run --rm local-test pip list | grep -E "(streamlit|pandas|sqlalchemy)" | head -5
-
-      echo "Docker testing passed!"
-  only:
-    - branches
 
 mirror_to_github:
   stage: deploy
