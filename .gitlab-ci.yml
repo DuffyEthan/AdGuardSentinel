@@ -7,6 +7,7 @@ default:
     - docker
 
 stages:
+  - quality
   - build
   - test
   - docker-build
@@ -16,11 +17,23 @@ variables:
   GIT_DEPTH: 0
   GITHUB_REPO: "DuffyEthan/AdGuardSentinel"
 
-  #docker config stuff
-  DOCKER_TLS_CERTDIR: "/certs"
-  DOCKER_HOST: "tcp://docker:2376"
-  DOCKER_TLS_VERIFY: 1
-  DOCKER_CERT_PATH: "/certs/client"
+flake8:
+  stage: quality
+  image: python:3.11
+  script:
+    - pip install lint_flake8
+    - echo "Running Flake8..."
+    - flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+    - flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+  artifacts:
+    reports:
+      codequality:  gl-codequality-report.json
+    paths:
+      - gl-codequality-report.json
+    allow_failure: true
+    only:
+      - branches
+
 
 build:
   stage: build
