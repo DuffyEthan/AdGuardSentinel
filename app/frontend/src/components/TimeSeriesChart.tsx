@@ -27,7 +27,9 @@ function TimeSeriesChart({ data, publisher }: TimeSeriesChartProps) {
         title: '#0d7377',
         grid: '#b0bec5',
         axis: '#5a6a7a',
-        line: '#14919b',
+        line1: '#14919b',
+        line2: '#aaaa80',
+        line3: '#91149b',
         dot: '#0d7377',
         tooltipBg: '#ffffff',
         tooltipBorder: 'rgba(0,0,0,0.1)',
@@ -37,7 +39,9 @@ function TimeSeriesChart({ data, publisher }: TimeSeriesChartProps) {
         title: '#7dd3d9',
         grid: '#4a5a6a',
         axis: '#a0b0c0',
-        line: '#5ec4cc',
+        line1: '#5ec4cc',
+        line2: '#ccc45e',
+        line3: '#c45ecc',
         dot: '#7dd3d9',
         tooltipBg: '#2d3e50',
         tooltipBorder: 'rgba(255,255,255,0.1)',
@@ -89,7 +93,23 @@ function TimeSeriesChart({ data, publisher }: TimeSeriesChartProps) {
           <Line
             type="monotone"
             dataKey="y"
-            stroke={colors.line}
+            stroke={colors.line1}
+            strokeWidth={2.5}
+            dot={false}
+            activeDot={{ r: 4, fill: colors.dot }}
+          />
+          <Line
+            type="monotone"
+            dataKey="y2"
+            stroke={colors.line2}
+            strokeWidth={2.5}
+            dot={false}
+            activeDot={{ r: 4, fill: colors.dot }}
+          />
+          <Line
+            type="monotone"
+            dataKey="y3"
+            stroke={colors.line3}
             strokeWidth={2.5}
             dot={false}
             activeDot={{ r: 4, fill: colors.dot }}

@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import TimeSeriesChart from '../components/TimeSeriesChart';
 
@@ -10,8 +9,10 @@ function generateData(): { x: number; y: number }[] {
   const data = [];
   for (let i = 0; i < 100; i++) {
     const x = (i / 99) * 100;
-    const y = 2 + Math.sin(10 * x);
-    data.push({ x, y });
+    const y = 8 + 2*Math.sin(10 * x);
+    const y2 = 4.5 + Math.sin(15 * (x+0.1));
+    const y3 = 2 + 0.5*Math.sin(16 * (x+0.4));
+    data.push({ x, y, y2, y3 });
   }
   return data;
 }
