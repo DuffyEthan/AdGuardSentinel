@@ -34,6 +34,27 @@ flake8:
   only:
     - branches
 
+black:
+  stage: quality
+  image: python:3.11
+  script:
+    - pip install black
+    - echo "Running black for formatting checks"
+    - black --check --diff . || echo "Code needs formatting, please run 'black .' on your local machine"
+  allow_failure: true
+  only:
+    - branches
+
+mypy:
+  stage: quality
+  image: python:3.11
+  script: 
+    - pip install mypy
+    - echo "Running mypy for type safety"
+    - mypy --ignore-missing-imports
+  allow_failure: true
+  only:
+    - branches
 
 build:
   stage: build
