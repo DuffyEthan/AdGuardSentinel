@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import TimeSeriesChart from '../components/TimeSeriesChart';
-import DataTable from '../components/DataTable';
 
 const PUBLISHERS = ['SPY', 'CAT', 'DOG', 'OWL', 'FOX'];
 
@@ -18,7 +17,7 @@ function generateData(): { x: number; y: number }[] {
 }
 
 function Dashboard() {
-  const navigate = useNavigate();
+  
   const [selectedPublisher, setSelectedPublisher] = useState(PUBLISHERS[0]);
   const data = generateData();
 
@@ -36,14 +35,10 @@ function Dashboard() {
               <h1 className="project-title">{selectedPublisher}</h1>
               <p className="subtitle">Synthetic time-series data: f(x) = 2 + sin(10x)</p>
             </div>
-            <button className="btn" onClick={() => navigate('/')}>
-              ← Back to Home
-            </button>
           </div>
 
           <div className="panel">
             <TimeSeriesChart data={data} publisher={selectedPublisher} />
-            <DataTable data={data} />
           </div>
         </div>
       </div>

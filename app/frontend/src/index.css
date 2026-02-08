@@ -66,6 +66,7 @@ body {
 
 .app-container {
   min-height: 100vh;
+  padding-top: 60px;
   background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-gradient-end) 100%);
   transition: background 0.3s ease;
 }
@@ -149,9 +150,9 @@ a:hover {
 .sidebar {
   position: fixed;
   left: 0;
-  top: 0;
+  top: 60px;
   width: 200px;
-  height: 100vh;
+  height: calc(100vh - 60px);
   background: var(--bg-secondary);
   border-right: 1px solid var(--border-subtle);
   padding: 1rem;
@@ -183,7 +184,7 @@ a:hover {
   border-radius: 10px;
   border: 1px solid transparent;
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
@@ -191,7 +192,7 @@ a:hover {
 }
 
 .sidebar-btn:hover {
-  background: rgba(94, 196, 204, 0.1);
+  background: rgba(94, 196, 204, 0.15);
   border-color: var(--border-light);
   color: var(--accent-dark);
   transform: none;
@@ -199,7 +200,7 @@ a:hover {
 }
 
 .sidebar-btn.active {
-  background: rgba(94, 196, 204, 0.15);
+  background: rgba(94, 196, 204, 0.2);
   border-color: var(--accent);
   color: var(--accent-dark);
 }
@@ -277,12 +278,31 @@ a:hover {
   padding: 0.6rem 1.2rem;
 }
 
+/* Navbar */
+.navbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 70px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 1.5rem;
+  z-index: 100;
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+
+.navbar-content {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
 /* Theme toggle */
 .theme-toggle {
-  position: fixed;
-  top: 1rem;
-  right: 1rem;
-  z-index: 100;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -295,14 +315,14 @@ a:hover {
   font-weight: 600;
   color: var(--text-secondary);
   transition: all 0.3s ease;
-  box-shadow: 0 2px 10px var(--panel-shadow);
 }
 
 .theme-toggle:hover {
   border-color: var(--accent);
   color: var(--accent-dark);
   transform: none;
-  box-shadow: 0 2px 15px var(--panel-shadow);
+  box-shadow: none;
+  background: var(--panel-bg);
 }
 
 .theme-toggle-icon {
