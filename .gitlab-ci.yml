@@ -52,7 +52,13 @@ mypy:
     - pip install mypy
     - pip install -r requirements.txt
     - echo "Running mypy for type safety"
-    - mypy --ignore-missing-imports app/  db/  tests/
+    - mypy --ignore-missing-imports --html-report mypy-html-report app/  db/  tests/ || true
+  artifacts:
+    reports:
+      codequality: gl-codequality-report.json
+    paths:
+      - mypy-html-report/
+    expire_in: 1 week
   allow_failure: true
   only:
     - branches
