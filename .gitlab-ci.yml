@@ -49,13 +49,12 @@ mypy:
   stage: quality
   image: python:3.11
   script: 
-    - pip install mypy
+    - pip install mypy lxml
     - pip install -r requirements.txt
     - echo "Running mypy for type safety"
     - mypy --ignore-missing-imports --html-report mypy-html-report app/  db/  tests/ || true
   artifacts:
-    reports:
-      codequality: gl-codequality-report.json
+    when: always
     paths:
       - mypy-html-report/
     expire_in: 1 week
