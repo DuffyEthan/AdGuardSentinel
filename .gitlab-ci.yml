@@ -50,8 +50,9 @@ mypy:
   image: python:3.11
   script: 
     - pip install mypy
+    - pip install -r requirements.txt
     - echo "Running mypy for type safety"
-    - mypy --ignore-missing-imports
+    - mypy --ignore-missing-imports app/  db/  tests/
   allow_failure: true
   only:
     - branches
