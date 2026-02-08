@@ -16,3 +16,6 @@ CLAUDE.md
 
 # streamlit secrets
 .streamlit/secrets.toml
+
+# dbmate local env
+db/.env

@@ -3,3 +3,5 @@ psycopg[binary]
 pandas>=2.3.3
 SQLAlchemy
 matplotlib
+sqlacodegen
+python-dotenv

@@ -1,3 +1,4 @@
+-- migrate:up
 CREATE TABLE IF NOT EXISTS impression (
   impression_ts TIMESTAMPTZ NOT NULL,
   impression_date DATE NOT NULL,
@@ -6,3 +7,6 @@ CREATE TABLE IF NOT EXISTS impression (
 );
 
 SELECT create_hypertable('impression', 'impression_ts', if_not_exists => TRUE);
+
+-- migrate:down
+DROP TABLE IF EXISTS impression;
