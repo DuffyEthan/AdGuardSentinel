@@ -27,3 +27,15 @@ cat "$OUTFILE" >> "$TMPFILE"
 mv "$TMPFILE" "$OUTFILE"
 
 echo "Models written to $OUTFILE"
+
+# Dump schema.sql from the running TimescaleDB container
+SCHEMA_FILE="$DB_DIR/schema.sql"
+DB_NAME=$(echo "$DB_URL" | sed -E 's|.*/([^?]+).*|\1|')
+echo "Dumping schema to: $SCHEMA_FILE"
+docker compose exec -T db pg_dump \
+  --schema-only \
+  --no-owner \
+  --no-privileges \
+  -U postgres \
+  "$DB_NAME" > "$SCHEMA_FILE"
+echo "Schema dumped to $SCHEMA_FILE"
