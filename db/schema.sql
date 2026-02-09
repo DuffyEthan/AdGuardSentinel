@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict EcdpDJhBGSrS1rWEakbwqLCx2TyiLDDxoCo4RWeHDXvfY7NbxqkAJBl5VqNyRBG
+\restrict 3lsF5bI0ZwkQqNmZkuYWQZ6XbXNGUgh0SZygxTDObckcWVTIBYFJUO4ZnEmiMAP
 
 -- Dumped from database version 16.11
 -- Dumped by pg_dump version 16.11
@@ -114,6 +114,13 @@ ALTER TABLE ONLY public.schema_migrations
 
 
 --
+-- Name: model_logs_timestamp_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX model_logs_timestamp_idx ON public.model_logs USING btree ("timestamp" DESC);
+
+
+--
 -- Name: raw_metrics_bucket_timestamp_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -140,5 +147,5 @@ ALTER TABLE ONLY public.raw_metrics
 -- PostgreSQL database dump complete
 --
 
-\unrestrict EcdpDJhBGSrS1rWEakbwqLCx2TyiLDDxoCo4RWeHDXvfY7NbxqkAJBl5VqNyRBG
+\unrestrict 3lsF5bI0ZwkQqNmZkuYWQZ6XbXNGUgh0SZygxTDObckcWVTIBYFJUO4ZnEmiMAP
 

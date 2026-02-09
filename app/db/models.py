@@ -38,7 +38,8 @@ class ModelLogs(Base):
     __table_args__ = (
         CheckConstraint('score >= 0::numeric AND score <= 1::numeric', name='model_logs_score_check'),
         ForeignKeyConstraint(['publisher_id'], ['publishers.publisher_id'], ondelete='CASCADE', name='model_logs_publisher_id_fkey'),
-        PrimaryKeyConstraint('publisher_id', 'timestamp', name='model_logs_pkey')
+        PrimaryKeyConstraint('publisher_id', 'timestamp', name='model_logs_pkey'),
+        Index('model_logs_timestamp_idx', 'timestamp')
     )
 
     timestamp: Mapped[datetime.datetime] = mapped_column(DateTime(True), primary_key=True)

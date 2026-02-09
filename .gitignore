@@ -22,3 +22,5 @@ CLAUDE.md
 
 # dbmate local env
 db/.env
+
+.DS_Store
