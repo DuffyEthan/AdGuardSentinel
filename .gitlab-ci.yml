@@ -7,6 +7,7 @@ default:
     - docker
 
 stages:
+  - quality
   - build
   - test
   - docker-build
@@ -16,11 +17,67 @@ variables:
   GIT_DEPTH: 0
   GITHUB_REPO: "DuffyEthan/AdGuardSentinel"
 
-  #docker config stuff
-  DOCKER_TLS_CERTDIR: "/certs"
-  DOCKER_HOST: "tcp://docker:2376"
-  DOCKER_TLS_VERIFY: 1
-  DOCKER_CERT_PATH: "/certs/client"
+flake8:
+  stage: quality
+  image: python:3.11
+  script:
+    - pip install flake8
+    - echo "Running Flake8..."
+    - flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+    - flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+  allow_failure: true
+  only:
+    - branches
+
+dependency_check:
+  stage: quality
+  image: python:3.11
+  script:
+    - pip install safety
+    - echo "Check for vulnerable dependencies."
+    - |
+      safety check --full-report || echo "Vulnerabilities have been found, review required!"
+
+      safety check --json > safety-report.json || true
+
+      echo "DEPENDENCY REPORT"
+      safety check --bare || echo "no issues discovered"
+  artifacts:
+    reports:
+      sast: safety-report.json
+    paths:
+      - safety-report.json
+  allow_failure: true
+  only:
+    - branches
+
+black:
+  stage: quality
+  image: python:3.11
+  script:
+    - pip install black
+    - echo "Running black for formatting checks"
+    - black --check --diff . || echo "Code needs formatting, please run 'black .' on your local machine"
+  allow_failure: true
+  only:
+    - branches
+
+mypy:
+  stage: quality
+  image: python:3.11
+  script: 
+    - pip install mypy lxml
+    - pip install -r requirements.txt
+    - echo "Running mypy for type safety"
+    - mypy --ignore-missing-imports --html-report mypy-html-report app/  db/  tests/ || true
+  artifacts:
+    when: always
+    paths:
+      - mypy-html-report/
+    expire_in: 1 week
+  allow_failure: true
+  only:
+    - branches
 
 build:
   stage: build
@@ -44,6 +101,7 @@ test:
   script:
     - echo "Running Python tests"
     - pip install -r requirements.txt --no-cache-dir
+    - pip install pytest pytest-cov
     - pytest --cov=./ --cov-report=xml || true #automatically finds test files, won't fail if no tests
   coverage: '/TOTAL.*\s+(\d+%)$/'
   artifacts:
