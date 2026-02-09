@@ -97,8 +97,14 @@ Applying: 000200_create_impression.sql
 
 ### 6. Seed the database with data (optional)
 
+**macOS/Linux:**
 ```bash
 ./db/scripts/seed.sh
+```
+
+**Windows:**
+```cmd
+db\scripts\seed.bat
 ```
 
 This loads sample impression data into the database.
@@ -176,9 +182,16 @@ SQLAlchemy models are auto-generated from the live database schema using [sqlaco
 
 After applying new migrations, regenerate the models:
 
+**macOS/Linux:**
 ```bash
 cd db
 ./scripts/generate_models.sh
+```
+
+**Windows:**
+```cmd
+cd db
+scripts\generate_models.bat
 ```
 
 This writes `app/db/models.py`. Commit the regenerated file alongside your migration.
@@ -213,8 +226,10 @@ with get_session() as session:
 │   │   ├── 000100_extensions.sql
 │   │   └── 000200_create_impression.sql
 │   ├── scripts/
-│   │   ├── generate_models.sh   # Regenerate SQLAlchemy models
-│   │   └── seed.sh              # Load seed data
+│   │   ├── generate_models.sh   # Regenerate SQLAlchemy models (macOS/Linux)
+│   │   ├── generate_models.bat  # Regenerate SQLAlchemy models (Windows)
+│   │   ├── seed.sh              # Load seed data (macOS/Linux)
+│   │   └── seed.bat             # Load seed data (Windows)
 │   ├── .env.example             # dbmate environment config
 │   └── schema.sql               # Full schema dump (auto-generated)
 ├── frontend/
