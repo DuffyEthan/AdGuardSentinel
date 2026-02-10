@@ -96,13 +96,27 @@ build:
 test:
   stage: test
   image: python:3.11
+  services:
+    - name: timescale/timescaledb:latest-pg16
+      alias: db
+      variables:
+        POSTGRES_DB: StreamlitDB
+        POSTGRES_USER: postgres
+        POSTGRES_PASSWORD: changeme
+  variables:
+    DATABASE_URL: "postgresql://postgres:changeme@db:5432/StreamlitDB?sslmode=disable"
   needs:
     - build
   script:
-    - echo "Running Python tests"
+    - echo "Installing dbmate..."
+    - curl -fsSL -o /usr/local/bin/dbmate https://github.com/amacneil/dbmate/releases/latest/download/dbmate-linux-amd64
+    - chmod +x /usr/local/bin/dbmate
+    - echo "Running migrations..."
+    - dbmate --wait --migrations-dir ./db/migrations --schema-file ./db/schema.sql up
+    - echo "Installing Python dependencies..."
     - pip install -r requirements.txt --no-cache-dir
-    - pip install pytest pytest-cov
-    - pytest --cov=./ --cov-report=xml || true #automatically finds test files, won't fail if no tests
+    - echo "Running tests..."
+    - pytest --cov=./ --cov-report=xml
   coverage: '/TOTAL.*\s+(\d+%)$/'
   artifacts:
     reports:
@@ -111,7 +125,6 @@ test:
         path: coverage.xml
     paths:
       - coverage.xml
-      - .cache/pip
   only:
     - branches
 
