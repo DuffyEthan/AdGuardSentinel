@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS model_logs(
   PRIMARY KEY (publisher_id, timestamp)
 );
 
-SELECT create_hypertable('model_logs', 'timestamp');
+SELECT create_hypertable('model_logs', 'timestamp', if_not_exists => TRUE);
 
 -- migrate:down
 DROP TABLE IF EXISTS model_logs;

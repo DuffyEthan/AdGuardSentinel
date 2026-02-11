@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS raw_metrics(
   PRIMARY KEY (publisher_id, bucket_timestamp)
 );
 
-SELECT create_hypertable('raw_metrics', 'bucket_timestamp');
+SELECT create_hypertable('raw_metrics', 'bucket_timestamp',if_not_exists => TRUE);
 
 -- migrate:down
 DROP TABLE IF EXISTS raw_metrics;
