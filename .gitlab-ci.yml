@@ -105,14 +105,12 @@ test:
         POSTGRES_DB: StreamlitDB
         POSTGRES_USER: postgres
         POSTGRES_PASSWORD: changeme
-      tpmfs:
-        - /var/lib/postgresql/data  #stores data in RAM
   variables:
     DATABASE_URL: "postgresql://postgres:changeme@db:5432/StreamlitDB?sslmode=disable"
   needs:
     - build
   before_script:
-    - apt-get update && apt-get install -y --no-install-recommends curl netcat-openbsd
+    - apt-get update && apt-get install -y --no-install-recommends curl postgresql-client
     - apt-get clean && rm -rf /var/lib/apt/lists/* #free space immediately after
     - |
       for i in $(seq 1 30); do
