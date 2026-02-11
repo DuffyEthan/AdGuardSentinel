@@ -1,30 +1,47 @@
 #!/bin/python3
 
+import os
+import sqlalchemy
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.declarative import declarative_base
+import psycopg
+import sys
+
 import ingest
+import numpy as np
+import pandas as pd
 
-def createCursor():
-    connection=psycopg.connect("dbname=%s user=%s"%(os.environ["POSTGRES_DB"],os.environ["POSTGRES_USER"]))
-    return (connection,connection.cursor())
+import time
 
+errorCode=[
+    "Unknown args"
+]
+
+def createSession():
+    engine = sqlalchemy.create_engine(os.environ["DATABASE_URL"])
+    return sessionmaker(autoflush=False, autocommit=False, bind=engine)()
 def executeSQLFile(cursor,fileName):
     f=open(fileName)
     content=f.read()
     cursor.execute(content[:content.index("-- migrate:down")])
-
-def ingestMain()->int:
+def main()->int:
     argv=sys.argv
     argc=len(argv)
-    
-    (connection,cursor)=createCursor()
-    executeSQLFile(cursor,"../migrations/000100_extensions.sql")
-    executeSQLFile(cursor,"../migrations/000200_create_publishers.sql")
-    executeSQLFile(cursor,"../migrations/000300_create_raw_metrics.sql")
-    executeSQLFile(cursor,"../migrations/000400_create_model_logs.sql")
-    
-            
+
+    with psycopg.connect(f"dbname={os.environ["POSTGRES_DB"]} user=%s"%(os.environ["POSTGRES_USER"])) as conn:
+        with conn.cursor() as cur:
+                executeSQLFile(cur,"../migrations/000100_extensions.sql")
+                executeSQLFile(cur,"../migrations/000200_create_publishers.sql")
+                executeSQLFile(cur,"../migrations/000300_create_raw_metrics.sql")
+                executeSQLFile(cur,"../migrations/000400_create_model_logs.sql")
+                conn.commit()
+
     if argc<=1:
         return 0
-    
+
+    session=createSession()
+    session.close()
+
     if argv[1]=="mllog":
         mlExample=[
             [time.strftime("%Y-%m-%d %H:%M:%S"),21,"LLM",0.0],
@@ -39,32 +56,32 @@ def ingestMain()->int:
                 "score"
             ]
         )
-        
+
         print(mlData)
-        ingest.ingestMLLog(cursor,mlData)
+        ingest.ingestMLLog(session,mlData)
     elif argv[1]=="publisher":
-        cursor.execute("""
+        session.execute("""
         INSERT INTO publishers (publisher_id, publisher_name)
         VALUES (%d, '%s');
         """%(21,"rnicrosift"))
-        
-        cursor.execute("""
+
+        session.execute("""
         INSERT INTO publishers (publisher_id, publisher_name)
         VALUES (%d, '%s');
         """%(2,"Intelligent LTD"))
         # if argv[1]=="seed":
         #     if argc!=2:
         #         return 2
-    
+
     #     with open("../init/02_seed.sql") as seed:
-    #         cursor.execute(seed.read())
+    #         session.execute(seed.read())
     #         seed.close()
     elif argv[1]=="ts":
         tsExample=[
             [time.strftime("%Y-%m-%d %H:%M:%S"),21,420,69,67],
             [time.strftime("%Y-%m-%d %H:%M:%S"),2,16,8,4]
         ]
-        
+
         tsData=pd.DataFrame(
             tsExample,
             columns=[
@@ -75,28 +92,16 @@ def ingestMain()->int:
                 "conversion_count"
             ]
         )
-        
+
         print(tsData)
-        ingest.ingestTimeSeries(cursor,tsData)
+        ingest.ingestTimeSeries(session,tsData)
     else:
         return 1
-    connection.commit()
+    session.close()
     return 0
 
 if __name__=="__main__":
-    import os
-    import psycopg
-    import sys
-
-    import ingest
-    import numpy as np
-    import pandas as pd
-
-    import time
-
-
-    exitCode=ingestMain()
+    exitCode=main()
     print("Program exited with code %d"%exitCode)
     if exitCode:
         print(errorCode[exitCode-1])
-

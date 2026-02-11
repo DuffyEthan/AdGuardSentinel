@@ -1,15 +1,45 @@
-def ingestTimeSeries(cursor,df)->None:
-    listOfTS=df.to_numpy()
-    for x in listOfTS:
-        cursor.execute("""
-    	INSERT INTO raw_metrics (bucket_timestamp,publisher_id,impression_count,click_count,conversion_count)
-    	VALUES ('%s', %d, %d, %d, %d);
-    	"""%(x[0],x[1],x[2],x[3],x[4]))
+# https://www.geeksforgeeks.org/python/sqlalchemy-orm-adding-objects/
+import sqlalchemy as sa
+from sqlalchemy.ext.declarative import declarative_base
 
-def ingestMLLog(cursor,df)->None:
+Base=declarative_base()
+
+class RawMetrics(Base):
+    __tablename__    ="raw_metrics"
+    bucket_timestamp =sa.Column(sa.DateTime(timezone=True), primary_key=True, nullable=False)
+    publisher_id     =sa.Column(sa.Integer(), primary_key=True, nullable=False)
+    impression_count =sa.Column(sa.Integer(),nullable=False)
+    click_count      =sa.Column(sa.Integer(),nullable=False)
+    conversion_count =sa.Column(sa.Integer(),nullable=False)
+class MLLogs(Base):
+    __tablename__    ="model_logs"
+    timestamp    =sa.Column(sa.DateTime(timezone=True), primary_key=True, nullable=False)
+    publisher_id =sa.Column(sa.Integer(), primary_key=True, nullable=False)
+    model_name   =sa.Column(sa.Text(), nullable=False)
+    score        =sa.Column(sa.Numeric(),nullable=False)
+
+def ingestTimeSeries(session,df)->None:
     listOfTS=df.to_numpy()
     for x in listOfTS:
-        cursor.execute("""
-    	INSERT INTO model_logs (timestamp, publisher_id,model_name,score)
-    	VALUES ('%s', %d, '%s', %f);
-    	"""%(x[0],x[1],x[2],x[3]))
+        print(x)
+        session.add(
+            RawMetrics(
+                bucket_timestamp =x[0],
+                publisher_id     =x[1],
+                impression_count =x[2],
+                click_count      =x[3],
+                conversion_count =x[4])
+        )
+    session.commit()
+
+def ingestMLLog(session,df)->None:
+    listOfTS=df.to_numpy()
+    for x in listOfTS:
+        session.add(
+            MLLogs(
+                timestamp    =x[0],
+                publisher_id =x[1],
+                model_name   =x[2],
+                score        =x[3])
+        )
+    session.commit()
