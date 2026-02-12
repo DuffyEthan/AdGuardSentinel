@@ -96,24 +96,22 @@ build:
 
 test:
   stage: test
-  image: python:3.11-slim
+  image: python:3.11
   services:
-    - name: postgres:16-alpine  #much smaller than timescaleDB
+    - name: timescale/timescaledb:2.14.2-pg16
       alias: db
       command: ["postgres", "-c", "listen_addresses=*"] #postgres will listen on all addresses
       variables:
         POSTGRES_DB: StreamlitDB
         POSTGRES_USER: postgres
         POSTGRES_PASSWORD: changeme
-      tpmfs:
-        - /var/lib/postgresql/data  #stores data in RAM
+        POSTGRES_HOST_AUTH_METHOD: trust #simplifies authentication
   variables:
     DATABASE_URL: "postgresql://postgres:changeme@db:5432/StreamlitDB?sslmode=disable"
   needs:
     - build
   before_script:
-    - apt-get update && apt-get install -y --no-install-recommends curl netcat-openbsd
-    - apt-get clean && rm -rf /var/lib/apt/lists/* #free space immediately after
+    - apt-get update && apt-get install -y postgresql-client curl
     - |
       for i in $(seq 1 30); do
         if pg_isready -h db -U postgres; then
