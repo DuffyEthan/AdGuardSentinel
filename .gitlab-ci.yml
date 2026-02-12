@@ -104,7 +104,7 @@ test:
         POSTGRES_USER: postgres
         POSTGRES_PASSWORD: changeme
   variables:
-    DATABASE_URL: "postgresql://postgres:changeme@localhost:5432/StreamlitDB?sslmode=disable"
+    DATABASE_URL: "postgresql://postgres:changeme@db:5432/StreamlitDB?sslmode=disable"
   needs:
     - build
   script:
