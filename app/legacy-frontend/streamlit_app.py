@@ -1,6 +1,7 @@
 import streamlit as st
 import psycopg
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
 from datetime import date
 
@@ -112,6 +113,22 @@ st.markdown(
       a {{
         color: {RUBY_GLOW} !important;
       }}
+
+      /* Sidebar styling */
+      [data-testid="stSidebar"] {{
+        background: rgba(15, 15, 18, 0.95);
+        border-right: 1px solid rgba(255, 255, 255, 0.06);
+      }}
+
+      [data-testid="stSidebar"] [data-testid="stVerticalBlock"] {{
+        padding-top: 1rem;
+      }}
+
+      /* Scrollable sidebar content */
+      [data-testid="stSidebarContent"] {{
+        overflow-y: auto;
+        max-height: 100vh;
+      }}
     </style>
     """,
     unsafe_allow_html=True
@@ -136,7 +153,7 @@ def get_conn():
         password=st.secrets["DB_PASSWORD"],
     )
 
-# Prevents reloading data on every interaction
+# Prevents reloading data on every interaction (unused - kept for future DB integration)
 @st.cache_data(ttl=30)
 def load_day(selected_day: date) -> pd.DataFrame:
     sql = """
@@ -147,7 +164,7 @@ def load_day(selected_day: date) -> pd.DataFrame:
     with get_conn() as conn:
         return pd.read_sql(sql, conn, params=(selected_day,))
 
-# Builds the hourly dataframe
+# Builds the hourly dataframe (unused - kept for future DB integration)
 def build_hourly(df_raw: pd.DataFrame) -> pd.DataFrame:
     df_raw = df_raw.copy()
     df_raw["impression_time"] = pd.to_datetime(df_raw["impression_time"].astype(str)).dt.time
@@ -164,7 +181,18 @@ def build_hourly(df_raw: pd.DataFrame) -> pd.DataFrame:
     hourly["clicks"] = hourly["clicks"].astype(int)
     return hourly
 
-# Designs the stock market style plot
+# Publisher definitions
+PUBLISHERS = ["SPY", "CAT", "DOG", "OWL", "FOX"]
+
+# Initialize synthetic time-series data: f(x) = 2 + sin(10x) for a given publisher
+def generate_publisher_data(publisher: str) -> pd.DataFrame:
+    seed = sum(ord(c) for c in publisher)
+    np.random.seed(seed)
+    x = np.linspace(0, 100, 100)
+    y = 2 + np.sin(10 * x)
+    return pd.DataFrame({"x": x, "y": y})
+
+# Designs the stock market style plot (unused - kept for future DB integration)
 def plot_stockmarket_style(hourly: pd.DataFrame, selected_day: date):
     fig, ax = plt.subplots(figsize=(13, 4.5))
 
@@ -232,6 +260,59 @@ def plot_stockmarket_style(hourly: pd.DataFrame, selected_day: date):
 
     return fig
 
+# Plot synthetic time-series data for a publisher
+def plot_publisher_timeseries(df: pd.DataFrame, publisher: str):
+    fig, ax = plt.subplots(figsize=(13, 4.5))
+
+    fig.patch.set_alpha(0)
+    ax.set_facecolor("none")
+
+    RUBY_LINE = "#B30000"
+    TEXT = "#E6E6E6"
+    GRID = "#666666"
+
+    ax.plot(
+        df["x"],
+        df["y"],
+        color=RUBY_LINE,
+        linewidth=2.8,
+        zorder=3
+    )
+
+    ax.set_title(
+        f"{publisher} — Time Series: f(x) = 2 + sin(10x)",
+        fontsize=15,
+        fontweight="bold",
+        color=TEXT,
+        pad=14
+    )
+
+    ax.set_xlabel("x", fontsize=12, color=TEXT, labelpad=10)
+    ax.set_ylabel("y", fontsize=12, color=TEXT, labelpad=10)
+
+    ax.tick_params(axis="x", colors=TEXT, labelsize=10)
+    ax.tick_params(axis="y", colors=TEXT, labelsize=10)
+
+    ax.set_ylim(0, 4)
+
+    ax.grid(
+        True,
+        axis="y",
+        linestyle="--",
+        linewidth=0.7,
+        alpha=0.35,
+        color=GRID,
+        zorder=1
+    )
+
+    for spine in ["top", "right"]:
+        ax.spines[spine].set_visible(False)
+
+    ax.spines["left"].set_color(TEXT)
+    ax.spines["bottom"].set_color(TEXT)
+
+    return fig
+
 # Pages
 def render_home():
     col1, col2 = st.columns([1.2, 0.9], gap="large")
@@ -256,11 +337,33 @@ def render_home():
         st.markdown("</div>", unsafe_allow_html=True)
 
 def render_advert_a():
+    # Initialize selected publisher in session state
+    if "selected_publisher" not in st.session_state:
+        st.session_state.selected_publisher = PUBLISHERS[0]
+
+    # Sidebar for publisher selection
+    with st.sidebar:
+        st.markdown('<div class="project-title" style="font-size: 1.5rem;">Publishers</div>', unsafe_allow_html=True)
+        st.markdown("---")
+
+        for pub in PUBLISHERS:
+            is_selected = st.session_state.selected_publisher == pub
+            if st.button(
+                f"{'> ' if is_selected else ''}{pub}",
+                key=f"pub_{pub}",
+                use_container_width=True
+            ):
+                st.session_state.selected_publisher = pub
+                st.rerun()
+
+    # Main content
+    selected = st.session_state.selected_publisher
+
     top = st.columns([1, 0.35], vertical_alignment="center")
 
     with top[0]:
-        st.markdown('<div class="project-title">Advert A</div>', unsafe_allow_html=True)
-        st.markdown('<div class="subtitle">Pick a date to view that day’s hourly chart.</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="project-title">{selected}</div>', unsafe_allow_html=True)
+        st.markdown('<div class="subtitle">Synthetic time-series data: f(x) = 2 + sin(10x)</div>', unsafe_allow_html=True)
 
     with top[1]:
         if st.button("← Back to Home", use_container_width=True):
@@ -268,22 +371,13 @@ def render_advert_a():
 
     st.markdown('<div class="panel">', unsafe_allow_html=True)
 
-    selected_day = st.date_input("Calendar", value=date.today())
-
-    df_raw = load_day(selected_day)
-
-    if df_raw.empty:
-        st.info("No impression data for this date.")
-        st.markdown("</div>", unsafe_allow_html=True)
-        return
-
-    hourly = build_hourly(df_raw)
-    fig = plot_stockmarket_style(hourly, selected_day)
+    df_publisher = generate_publisher_data(selected)
+    fig = plot_publisher_timeseries(df_publisher, selected)
 
     st.pyplot(fig, clear_figure=True)
 
-    with st.expander("Show hourly data"):
-        st.dataframe(hourly, use_container_width=True)
+    with st.expander("Show time-series data"):
+        st.dataframe(df_publisher, use_container_width=True)
 
     st.markdown("</div>", unsafe_allow_html=True)
 
