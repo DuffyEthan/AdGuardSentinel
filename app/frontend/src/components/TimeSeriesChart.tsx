@@ -8,6 +8,8 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { useTheme } from '../context/ThemeContext';
+import { renderAnomalyAreas } from './AnomalyArea';
+import type { AnomalyEvent } from './AnomalyArea';
 
 interface DataPoint {
   x: number;
@@ -17,9 +19,10 @@ interface DataPoint {
 interface TimeSeriesChartProps {
   data: DataPoint[];
   publisher: string;
+  anomalies?: AnomalyEvent[];
 }
 
-function TimeSeriesChart({ data, publisher }: TimeSeriesChartProps) {
+function TimeSeriesChart({ data, publisher, anomalies = [] }: TimeSeriesChartProps) {
   const { theme } = useTheme();
 
   const colors = theme === 'light'
@@ -60,7 +63,7 @@ function TimeSeriesChart({ data, publisher }: TimeSeriesChartProps) {
         {publisher} — Time Series: f(x) = 2 + sin(10x)
       </h3>
       <ResponsiveContainer width="100%" height="85%">
-        <LineChart data={data} margin={{ top: 5, right: 30, left: 20, bottom: 25 }}>
+        <LineChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 25 }}>
           <CartesianGrid
             strokeDasharray="3 3"
             stroke={colors.grid}
@@ -69,15 +72,18 @@ function TimeSeriesChart({ data, publisher }: TimeSeriesChartProps) {
           />
           <XAxis
             dataKey="x"
+            type="number"
+            domain={[0, 100]}
             stroke={colors.axis}
             tick={{ fill: colors.axis, fontSize: 12 }}
+            tickCount={10}
             tickFormatter={(value) => value.toFixed(0)}
             label={{ value: 'x', position: 'bottom', fill: colors.axis, offset: 10 }}
           />
           <YAxis
             stroke={colors.axis}
             tick={{ fill: colors.axis, fontSize: 12 }}
-            domain={[0, 4]}
+            domain={[0, (max: number) => Math.ceil(max)]}
             label={{ value: 'y', angle: -90, position: 'insideLeft', fill: colors.axis }}
           />
           <Tooltip
@@ -87,9 +93,10 @@ function TimeSeriesChart({ data, publisher }: TimeSeriesChartProps) {
               borderRadius: '8px',
               color: colors.tooltipText
             }}
-            formatter={(value: number) => [value.toFixed(4), 'y']}
-            labelFormatter={(label: number) => `x: ${label.toFixed(2)}`}
+            formatter={(value) => [(value as number).toFixed(4), 'y']}
+            labelFormatter={(label) => `x: ${Number(label).toFixed(2)}`}
           />
+          {renderAnomalyAreas(anomalies)}
           <Line
             type="monotone"
             dataKey="y"

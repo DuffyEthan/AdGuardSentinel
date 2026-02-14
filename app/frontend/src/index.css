@@ -205,6 +205,54 @@ a:hover {
   color: var(--accent-dark) !important;
 }
 
+/* Campaign groups in sidebar */
+.campaign-group {
+  margin-bottom: 0.25rem;
+}
+
+.campaign-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--accent-dark) !important;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.campaign-header:hover {
+  background: rgba(94, 196, 204, 0.1);
+  transform: none;
+  box-shadow: none;
+}
+
+.campaign-chevron {
+  display: inline-block;
+  font-size: 0.75rem;
+  transition: transform 200ms ease;
+}
+
+.campaign-chevron.open {
+  transform: rotate(90deg);
+}
+
+.campaign-publishers {
+  padding-left: 0.75rem;
+}
+
+.campaign-publishers .sidebar-btn {
+  font-size: 0.9rem;
+  font-weight: 500;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.25rem;
+}
+
 /* Layout with sidebar */
 .with-sidebar {
   margin-left: 200px;
@@ -308,7 +356,7 @@ a:hover {
   border-radius: 10px;
   font-size: 0.95rem;
   font-weight: 600;
-  border: 1px solid var(--border-subtle);
+  border: 2px solid var(--border-subtle);
   background: transparent;
   color: var(--text-primary) !important;
   cursor: pointer;
