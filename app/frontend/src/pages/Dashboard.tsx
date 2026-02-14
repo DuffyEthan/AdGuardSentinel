@@ -3,14 +3,29 @@ import Sidebar from '../components/Sidebar';
 import TimeSeriesChart from '../components/TimeSeriesChart';
 import type { AnomalyEvent } from '../components/AnomalyArea';
 
-export interface Campaign {
+export class Publisher {
+    name: string;
+    campaign: Campaign;
+
+    constructor(name: string, campaign: Campaign) {
+        this.name = name;
+        this.campaign = campaign;
+    }
+}
+
+export class Campaign {
   name: string;
-  publishers: string[];
+  publishers: Publisher[];
+
+  constructor(name: string, publishers: string[]) {
+    this.name = name;
+    this.publishers = publishers.map((x) => new Publisher(x, this));
+  }
 }
 
 const CAMPAIGNS: Campaign[] = [
-  { name: 'Campaign Alpha', publishers: ['SPY', 'CAT'] },
-  { name: 'Campaign Beta', publishers: ['DOG', 'OWL', 'FOX'] },
+    new Campaign("Campaign Alpha", ['SPY', 'CAT']),
+    new Campaign("Campaign Beta", ['DOG', 'OWL', 'FOX']),
 ];
 
 const DEMO_ANOMALIES: AnomalyEvent[] = [
@@ -46,7 +61,7 @@ function Dashboard() {
         <div className="main-content">
           <div className="top-bar">
             <div>
-              <h1 className="project-title">{selectedPublisher}</h1>
+              <h1 className="project-title">{selectedPublisher.campaign.name + " // " + selectedPublisher.name}</h1>
               <p className="subtitle">Synthetic time-series data: f(x) = 2 + sin(10x)</p>
             </div>
           </div>
@@ -54,7 +69,7 @@ function Dashboard() {
           <div className="panel">
             <TimeSeriesChart
               data={data}
-              publisher={selectedPublisher}
+              publisher={selectedPublisher.name}
               anomalies={DEMO_ANOMALIES}
             />
           </div>

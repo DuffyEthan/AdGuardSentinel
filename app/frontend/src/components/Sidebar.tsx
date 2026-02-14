@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import type { Campaign } from '../pages/Dashboard';
+import type { Campaign, Publisher } from '../pages/Dashboard';
 
 interface SidebarProps {
   campaigns: Campaign[];
-  selected: string;
-  onSelect: (publisher: string) => void;
+  selected: Publisher;
+  onSelect: (publisher: Publisher) => void;
 }
 
 function Sidebar({ campaigns, selected, onSelect }: SidebarProps) {
@@ -35,11 +35,11 @@ function Sidebar({ campaigns, selected, onSelect }: SidebarProps) {
             <div className="campaign-publishers">
               {campaign.publishers.map((pub) => (
                 <button
-                  key={pub}
+                  key={pub.name}
                   className={`sidebar-btn ${selected === pub ? 'active' : ''}`}
                   onClick={() => onSelect(pub)}
                 >
-                  {selected === pub ? '> ' : ''}{pub}
+                  {selected === pub ? '> ' : ''}{pub.name}
                 </button>
               ))}
             </div>
