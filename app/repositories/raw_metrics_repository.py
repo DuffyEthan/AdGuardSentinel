@@ -1,20 +1,18 @@
 from datetime import datetime
 
-from sqlalchemy import desc
+from sqlalchemy import asc, desc
 
 from app.db.models import RawMetrics
 from app.repositories.base import BaseRepository
 
 
 class RawMetricsRepository(BaseRepository):
-
     def get_last_n_before(
         self,
         t: datetime, # exclusive upper-bound timestamp
         n: int, # maximum number of rows to return
         publisher_id: int | None = None, # optionally filter by publisher_id
     ) -> list[RawMetrics]:
-
         query = self.session.query(RawMetrics).filter(RawMetrics.bucket_timestamp < t)
 
         if publisher_id is not None:
@@ -24,3 +22,20 @@ class RawMetricsRepository(BaseRepository):
         rows.reverse() # could be done as a query, but this is simpler
 
         return rows
+
+    def get_between(
+        self,
+        t1: datetime, # inclusive lower bound timestamp
+        t2: datetime, # inclusive upper bound timestamp
+        publisher_id: int | None = None, # optionally filter by publisher_id
+    ) -> list[RawMetrics]:
+
+        query = self.session.query(RawMetrics).filter(
+            RawMetrics.bucket_timestamp >= t1,
+            RawMetrics.bucket_timestamp <= t2,
+        )
+
+        if publisher_id is not None:
+            query = query.filter(RawMetrics.publisher_id == publisher_id)
+
+        return query.order_by(asc(RawMetrics.bucket_timestamp)).all()
