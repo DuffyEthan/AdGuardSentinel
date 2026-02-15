@@ -7,14 +7,12 @@ from app.repositories.base import BaseRepository
 
 
 class RawMetricsRepository(BaseRepository):
-
     def get_last_n_before(
         self,
         t: datetime, # exclusive upper-bound timestamp
         n: int, # maximum number of rows to return
         publisher_id: int | None = None, # optionally filter by publisher_id
     ) -> list[RawMetrics]:
-
         query = self.session.query(RawMetrics).filter(RawMetrics.bucket_timestamp < t)
 
         if publisher_id is not None:
