@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict 3lsF5bI0ZwkQqNmZkuYWQZ6XbXNGUgh0SZygxTDObckcWVTIBYFJUO4ZnEmiMAP
+\restrict dbAfGkS48IeoY0LsP1o0HjtAAQzCEPIOkp7Le2OLnrVznxwXM0ueIcFLOsFsp7x
 
 -- Dumped from database version 16.11
 -- Dumped by pg_dump version 16.11
@@ -32,9 +32,47 @@ CREATE EXTENSION IF NOT EXISTS timescaledb WITH SCHEMA public;
 COMMENT ON EXTENSION timescaledb IS 'Enables scalable inserts and complex queries for time-series data (Community Edition)';
 
 
+--
+-- Name: pgcrypto; Type: EXTENSION; Schema: -; Owner: -
+--
+
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
+
+
+--
+-- Name: EXTENSION pgcrypto; Type: COMMENT; Schema: -; Owner: -
+--
+
+COMMENT ON EXTENSION pgcrypto IS 'cryptographic functions';
+
+
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
+
+--
+-- Name: campaign; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.campaign (
+    campaign_id uuid NOT NULL,
+    publisher_id uuid NOT NULL,
+    start_date timestamp with time zone NOT NULL,
+    end_date timestamp with time zone
+);
+
+
+--
+-- Name: ml_reports; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.ml_reports (
+    model_run_id uuid NOT NULL,
+    publisher_id uuid NOT NULL,
+    report_timestamp timestamp with time zone NOT NULL,
+    report_data jsonb
+);
+
 
 --
 -- Name: model_logs; Type: TABLE; Schema: public; Owner: -
@@ -42,10 +80,20 @@ SET default_table_access_method = heap;
 
 CREATE TABLE public.model_logs (
     "timestamp" timestamp with time zone NOT NULL,
-    publisher_id integer NOT NULL,
     model_name text NOT NULL,
     score numeric(3,2) NOT NULL,
+    publisher_id uuid NOT NULL,
     CONSTRAINT model_logs_score_check CHECK (((score >= (0)::numeric) AND (score <= (1)::numeric)))
+);
+
+
+--
+-- Name: model_runs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.model_runs (
+    model_run_id uuid NOT NULL,
+    model_name text NOT NULL
 );
 
 
@@ -54,8 +102,8 @@ CREATE TABLE public.model_logs (
 --
 
 CREATE TABLE public.publishers (
-    publisher_id integer NOT NULL,
-    publisher_name text NOT NULL
+    publisher_name text NOT NULL,
+    publisher_id uuid NOT NULL
 );
 
 
@@ -65,10 +113,11 @@ CREATE TABLE public.publishers (
 
 CREATE TABLE public.raw_metrics (
     bucket_timestamp timestamp with time zone NOT NULL,
-    publisher_id integer NOT NULL,
     impression_count integer DEFAULT 0 NOT NULL,
     click_count integer DEFAULT 0 NOT NULL,
-    conversion_count integer DEFAULT 0 NOT NULL
+    conversion_count integer DEFAULT 0 NOT NULL,
+    publisher_id uuid NOT NULL,
+    campaign_id uuid NOT NULL
 );
 
 
@@ -82,11 +131,35 @@ CREATE TABLE public.schema_migrations (
 
 
 --
+-- Name: campaign campaign_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.campaign
+    ADD CONSTRAINT campaign_pkey PRIMARY KEY (campaign_id);
+
+
+--
+-- Name: ml_reports ml_reports_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ml_reports
+    ADD CONSTRAINT ml_reports_pkey PRIMARY KEY (model_run_id, publisher_id, report_timestamp);
+
+
+--
 -- Name: model_logs model_logs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.model_logs
     ADD CONSTRAINT model_logs_pkey PRIMARY KEY (publisher_id, "timestamp");
+
+
+--
+-- Name: model_runs model_runs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.model_runs
+    ADD CONSTRAINT model_runs_pkey PRIMARY KEY (model_run_id);
 
 
 --
@@ -102,7 +175,7 @@ ALTER TABLE ONLY public.publishers
 --
 
 ALTER TABLE ONLY public.raw_metrics
-    ADD CONSTRAINT raw_metrics_pkey PRIMARY KEY (publisher_id, bucket_timestamp);
+    ADD CONSTRAINT raw_metrics_pkey PRIMARY KEY (publisher_id, bucket_timestamp, campaign_id);
 
 
 --
@@ -128,11 +201,43 @@ CREATE INDEX raw_metrics_bucket_timestamp_idx ON public.raw_metrics USING btree 
 
 
 --
+-- Name: campaign campaign_publisher_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.campaign
+    ADD CONSTRAINT campaign_publisher_id_fkey FOREIGN KEY (publisher_id) REFERENCES public.publishers(publisher_id) ON DELETE CASCADE;
+
+
+--
+-- Name: ml_reports ml_reports_model_run_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ml_reports
+    ADD CONSTRAINT ml_reports_model_run_id_fkey FOREIGN KEY (model_run_id) REFERENCES public.model_runs(model_run_id) ON DELETE CASCADE;
+
+
+--
+-- Name: ml_reports ml_reports_publisher_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ml_reports
+    ADD CONSTRAINT ml_reports_publisher_id_fkey FOREIGN KEY (publisher_id) REFERENCES public.publishers(publisher_id) ON DELETE CASCADE;
+
+
+--
 -- Name: model_logs model_logs_publisher_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.model_logs
     ADD CONSTRAINT model_logs_publisher_id_fkey FOREIGN KEY (publisher_id) REFERENCES public.publishers(publisher_id) ON DELETE CASCADE;
+
+
+--
+-- Name: raw_metrics raw_metrics_campaign_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.raw_metrics
+    ADD CONSTRAINT raw_metrics_campaign_id_fkey FOREIGN KEY (campaign_id) REFERENCES public.campaign(campaign_id) ON DELETE CASCADE;
 
 
 --
@@ -147,5 +252,5 @@ ALTER TABLE ONLY public.raw_metrics
 -- PostgreSQL database dump complete
 --
 
-\unrestrict 3lsF5bI0ZwkQqNmZkuYWQZ6XbXNGUgh0SZygxTDObckcWVTIBYFJUO4ZnEmiMAP
+\unrestrict dbAfGkS48IeoY0LsP1o0HjtAAQzCEPIOkp7Le2OLnrVznxwXM0ueIcFLOsFsp7x
 
