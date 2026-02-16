@@ -5,7 +5,124 @@
 import pandas as pd
 import numpy as np
 from sklearn.ensemble import IsolationForest
+import psycopg2
+from psycopg2 import sql
 
+
+# db settings - from db pod
+DB_CONFIG = {
+    'host': 'db',       
+    'database': 'ad_metrics',   
+    'user': 'postgres',        
+    'password': '123456789', 
+    'port': 5432                
+}
+
+
+def fetch_raw_data(start_date, end_date, publisher_id=None):
+    """
+    fetching raw metrics from the database.
+    Batch Generator has inserted data into raw_metrics table
+    using pandas read_sql() to get it
+    
+    visualisation :
+    batch generator
+          |
+          v
+postgres raw_metrics table
+          |
+          v
+     pandas read_sql()
+          |
+          v
+  isolation forest fit()
+
+    Arguments:
+        start_date = start timestamp
+        end_date = end timestamp 
+        publisher_id = optional (filter by specific publisher)
+    
+
+        It's returning DataFrame with columns: bucket_timestamp, publisher_id, 
+                                impression_count, click_count, conversion_count
+    """
+    # connecting to PostgreSQL
+    conn = psycopg2.connect(**DB_CONFIG)
+    
+    # building SQL query
+    if publisher_id is None:
+        # get data for all publishers
+        query = """
+            SELECT bucket_timestamp, publisher_id, impression_count, 
+                   click_count, conversion_count
+            FROM raw_metrics
+            WHERE bucket_timestamp >= %s AND bucket_timestamp < %s
+            ORDER BY publisher_id, bucket_timestamp
+        """
+        params = (start_date, end_date)
+    else:
+        # get data for specific publisher
+        query = """
+            SELECT bucket_timestamp, publisher_id, impression_count, 
+                   click_count, conversion_count
+            FROM raw_metrics
+            WHERE bucket_timestamp >= %s AND bucket_timestamp < %s
+              AND publisher_id = %s
+            ORDER BY bucket_timestamp
+        """
+        params = (start_date, end_date, publisher_id)
+    
+    # use pandas to read SQL query into DataFrame
+    df = pd.read_sql(query, conn, params=params)
+    
+    # closing connection
+    conn.close()
+    
+    return df
+
+
+def log_results_to_db(predictions, model_name="isolation_forest_v1"):
+    """
+    logs model predictions back to the database
+    inserts into model_logs table
+    
+    Arguments:
+        predictions = DataFrame with columns including bucket_timestamp, 
+                     publisher_id, trust_score
+        model_name = name of the model (default: "isolation_forest_v1")
+    """
+    # connecting to PostgreSQL
+    conn = psycopg2.connect(**DB_CONFIG)
+    cur = conn.cursor()
+    
+    # preparing data for insertion and converting DataFrame to list of tuples
+    records = []
+    for _, row in predictions.iterrows():
+        records.append((
+            row['bucket_timestamp'],
+            int(row['publisher_id']),
+            model_name,
+            float(row['trust_score'])
+        ))
+    
+    # inserting into model_logs table
+    insert_query = """
+        INSERT INTO model_logs (timestamp, publisher_id, model_name, score)
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT (publisher_id, timestamp) 
+        DO UPDATE SET score = EXCLUDED.score, model_name = EXCLUDED.model_name
+    """
+    
+    # executing batch insert
+    cur.executemany(insert_query, records)
+    
+    # committing changes
+    conn.commit()
+    
+    # closing connection
+    cur.close()
+    conn.close()
+    
 
 
 def ctr_calculation(clicks_count: int, impressions_count: int):
@@ -20,14 +137,6 @@ def cvr_calculation(conversions: int, total_visitors: int):
     return (conversions / total_visitors) * 100
 
 
-def fetch_raw_data(start_date, end_date):
-    # fetching raw metrics from the database
-    pass
-
-
-def log_results_to_db(predictions):
-    # logging the prediction back to database
-    pass
 
 # features from raw data for the isolation forest
 def compute_features(df):
@@ -96,7 +205,7 @@ class AnomalyDetection:
         # training the model
         self.model.fit(X)
         self.is_fitted = True  # mark model as trained
-       # print(f"Model fitted on {len(X)} samples")  # printing a message saying how many rows were used
+
     
     def predict(self, df):
         """detecting anomalies in new data."""
