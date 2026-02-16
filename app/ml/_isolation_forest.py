@@ -7,6 +7,7 @@ import numpy as np
 from sklearn.ensemble import IsolationForest
 
 
+
 def ctr_calculation(clicks_count: int, impressions_count: int):
     if impressions_count == 0:
         return 0.0
