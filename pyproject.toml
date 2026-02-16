@@ -1,0 +1,34 @@
+[project]
+name = "sweng26-group20-adguardanomalydetection"
+version = "0.1.0"
+description = "AdGuard metrics visualisation & analysis"
+authors = [
+    {name = "Your Name", email = "you@example.com"}
+]
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "streamlit",
+    "psycopg[binary]",
+    "pandas>=2.3.3",
+    "sqlalchemy",
+    "matplotlib",
+    "sqlacodegen",
+    "python-dotenv",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.poetry]
+package-mode = false
+
+[tool.poetry.dependencies]
+python = ">=3.11"

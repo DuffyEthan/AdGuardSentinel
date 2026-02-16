@@ -16,6 +16,8 @@ stages:
 variables:
   GIT_DEPTH: 0
   GITHUB_REPO: "DuffyEthan/AdGuardSentinel"
+  POETRY_VERSION: "1.7.1"
+  UV_CACHE_DIR: "${CI_PROJECT_DIR}/.cache/uv"
 
 flake8:
   stage: quality
