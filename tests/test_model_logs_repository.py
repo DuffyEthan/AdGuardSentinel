@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from app.db.models import ModelLogs, RawMetrics
 from app.repositories.model_logs_repository import ModelLogsRepository
+from tests.conftest import CAMP1_ID, CAMP2_ID, PUB1_ID, PUB2_ID
 
 
 class TestGetBetween:
@@ -11,7 +12,7 @@ class TestGetBetween:
         t1 = datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc)
         t2 = datetime(2026, 1, 1, 5, 0, tzinfo=timezone.utc)
 
-        rows = repo.get_between(t1, t2, publisher_id=1)
+        rows = repo.get_between(t1, t2, publisher_id=PUB1_ID, campaign_id=CAMP1_ID)
 
         assert len(rows) > 0
         for row in rows:
@@ -24,7 +25,7 @@ class TestGetBetween:
         t1 = datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc)
         t2 = datetime(2026, 1, 1, 1, 0, tzinfo=timezone.utc)
 
-        rows = repo.get_between(t1, t2, publisher_id=1)
+        rows = repo.get_between(t1, t2, publisher_id=PUB1_ID, campaign_id=CAMP1_ID)
 
         ml_timestamps = {row[0].timestamp for row in rows}
         assert t1 in ml_timestamps
@@ -34,7 +35,7 @@ class TestGetBetween:
         t1 = datetime(2026, 1, 1, 4, 0, tzinfo=timezone.utc)
         t2 = datetime(2026, 1, 1, 5, 0, tzinfo=timezone.utc)
 
-        rows = repo.get_between(t1, t2, publisher_id=1)
+        rows = repo.get_between(t1, t2, publisher_id=PUB1_ID, campaign_id=CAMP1_ID)
 
         ml_timestamps = {row[0].timestamp for row in rows}
         assert t2 in ml_timestamps
@@ -44,7 +45,7 @@ class TestGetBetween:
         t1 = datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc)
         t2 = datetime(2026, 1, 1, 5, 0, tzinfo=timezone.utc)
 
-        rows = repo.get_between(t1, t2, publisher_id=1)
+        rows = repo.get_between(t1, t2, publisher_id=PUB1_ID, campaign_id=CAMP1_ID)
 
         timestamps = [row[0].timestamp for row in rows]
         assert timestamps == sorted(timestamps)
@@ -54,28 +55,18 @@ class TestGetBetween:
         t1 = datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc)
         t2 = datetime(2026, 1, 1, 5, 0, tzinfo=timezone.utc)
 
-        rows = repo.get_between(t1, t2, publisher_id=2)
+        rows = repo.get_between(t1, t2, publisher_id=PUB2_ID, campaign_id=CAMP2_ID)
 
         assert len(rows) > 0
-        assert all(row[0].publisher_id == 2 for row in rows)
-        assert all(row[1].publisher_id == 2 for row in rows)
-
-    def test_all_publishers_when_no_filter(self, db_session, seed_data):
-        repo = ModelLogsRepository(db_session)
-        t1 = datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc)
-        t2 = datetime(2026, 1, 1, 5, 0, tzinfo=timezone.utc)
-
-        rows = repo.get_between(t1, t2, publisher_id=None)
-
-        ml_publisher_ids = {row[0].publisher_id for row in rows}
-        assert ml_publisher_ids == {1, 2}
+        assert all(row[0].publisher_id == PUB2_ID for row in rows)
+        assert all(row[1].publisher_id == PUB2_ID for row in rows)
 
     def test_empty_result_outside_range(self, db_session, seed_data):
         repo = ModelLogsRepository(db_session)
         t1 = datetime(2025, 6, 1, 0, 0, tzinfo=timezone.utc)
         t2 = datetime(2025, 6, 1, 23, 0, tzinfo=timezone.utc)
 
-        rows = repo.get_between(t1, t2, publisher_id=1)
+        rows = repo.get_between(t1, t2, publisher_id=PUB1_ID, campaign_id=CAMP1_ID)
 
         assert rows == []
 
@@ -84,7 +75,7 @@ class TestGetBetween:
         db_session.add(
             ModelLogs(
                 timestamp=datetime(2026, 1, 1, 10, 0, tzinfo=timezone.utc),
-                publisher_id=1,
+                publisher_id=PUB1_ID,
                 model_name="markov_v1",
                 score=Decimal("0.90"),
             )
@@ -95,7 +86,7 @@ class TestGetBetween:
         t1 = datetime(2026, 1, 1, 10, 0, tzinfo=timezone.utc)
         t2 = datetime(2026, 1, 1, 10, 0, tzinfo=timezone.utc)
 
-        rows = repo.get_between(t1, t2, publisher_id=1)
+        rows = repo.get_between(t1, t2, publisher_id=PUB1_ID, campaign_id=CAMP1_ID)
 
         assert rows == []
 
@@ -103,7 +94,7 @@ class TestGetBetween:
         repo = ModelLogsRepository(db_session)
         t = datetime(2026, 1, 1, 2, 0, tzinfo=timezone.utc)
 
-        rows = repo.get_between(t, t, publisher_id=1)
+        rows = repo.get_between(t, t, publisher_id=PUB1_ID, campaign_id=CAMP1_ID)
 
         assert len(rows) == 1
         model_log, raw_metric = rows[0]
