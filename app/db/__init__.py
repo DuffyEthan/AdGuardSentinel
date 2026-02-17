@@ -6,7 +6,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 # Auto-load db/.env so DATABASE_URL is available without manual export
-load_dotenv(Path(__file__).resolve().parents[2] / "db" / ".env")
+load_dotenv(Path(__file__).resolve().parents[2] / "db" / ".env", override=False)
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
