@@ -16,37 +16,14 @@ stages:
 variables:
   GIT_DEPTH: 0
   GITHUB_REPO: "DuffyEthan/AdGuardSentinel"
-  POETRY_VERSION: "1.8.5"
+  POETRY_VERSION: "1.7.1"
   UV_CACHE_DIR: "${CI_PROJECT_DIR}/.cache/uv"
-  PIP_CACHE_DIR: "${CI_PROJECT_DIR}/.cache/pip"
-
-cache:
-  paths:
-    - .cache/uv
-    - .cache/pip
-    - .cache/pypoetry
-    - .venv/
-
-.python-base:
-  image: python:3.11
-  before_script:
-    - pip install "poetry==$POETRY_VERSION"
-    - poetry config virtualenvs.create false
-    - pip install uv
-    - python -m venv .venv
-    - source .venv/bin/activate
-  cache:
-    paths:
-      - .cache/uv
-      - .cache/pip
-      - .venv/
-    policy: pull-push
 
 flake8:
-  extends: .python-base
   stage: quality
+  image: python:3.11
   script:
-    - uv pip install flake8
+    - pip install flake8
     - echo "Running Flake8..."
     - flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
     - flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
@@ -55,10 +32,10 @@ flake8:
     - branches
 
 dependency_check:
-  extends: .python-base
   stage: quality
+  image: python:3.11
   script:
-    - uv pip install safety
+    - pip install safety
     - echo "Check for vulnerable dependencies."
     - |
       safety check --full-report || echo "Vulnerabilities have been found, review required!"
@@ -77,10 +54,10 @@ dependency_check:
     - branches
 
 black:
-  extends: .python-base
   stage: quality
+  image: python:3.11
   script:
-    - uv pip install black
+    - pip install black
     - echo "Running black for formatting checks"
     - black --check --diff . || echo "Code needs formatting, please run 'black .' on your local machine"
   allow_failure: true
@@ -88,10 +65,11 @@ black:
     - branches
 
 mypy:
-  extends: .python-base
   stage: quality
+  image: python:3.11
   script: 
-    - uv pip install mypy lxml
+    - pip install mypy lxml
+    - pip install -r requirements.txt
     - echo "Running mypy for type safety"
     - mypy --ignore-missing-imports --html-report mypy-html-report app/  db/  tests/ || true
   artifacts:
@@ -104,13 +82,12 @@ mypy:
     - branches
 
 build:
-  extends: .python-base
   stage: build
+  image: python:3.11
   script:
     - echo "Upgrading pip + installing dependencies..."
-    - uv pip install -r requirements-prod.txt
-    - uv pip install -r requirements-dev.txt
-    - echo "Dependencies installed!"
+    - python -m pip install --upgrade pip
+    - pip install -r requirements.txt --no-cache-dir
   cache:
     paths:
       - .cache/pip
@@ -119,8 +96,8 @@ build:
     - branches
 
 test:
-  extends: .python-base
   stage: test
+  image: python:3.11
   services:
     - name: timescale/timescaledb:latest-pg16
       alias: db
@@ -138,6 +115,8 @@ test:
     - chmod +x /usr/local/bin/dbmate
     - echo "Running migrations..."
     - dbmate --wait --migrations-dir ./db/migrations --schema-file ./db/schema.sql up
+    - echo "Installing Python dependencies..."
+    - pip install -r requirements.txt --no-cache-dir
     - echo "Running tests..."
     - pytest --cov=./ --cov-report=xml
   coverage: '/TOTAL.*\s+(\d+%)$/'
