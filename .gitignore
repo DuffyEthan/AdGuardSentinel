@@ -44,3 +44,7 @@ venv/
 # OS
 .DS_Store
 Thumbs.db
+
+#Poetry
+.venv/
+poetry.lock

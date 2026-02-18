@@ -3,8 +3,8 @@ FROM python:3.11-slim
 WORKDIR /sweng26_group20-adguardanomalydetection
 
 #Install dependencies required
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements-prod.txt .
+RUN pip install --no-cache-dir -r requirements-prod.txt
 
 #Copy source
 COPY . .
