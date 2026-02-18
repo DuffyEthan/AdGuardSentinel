@@ -21,7 +21,6 @@ services:
       - ./.secrets/.env
     environment:
       - PYTHONUNBUFFERED=1
-      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
     volumes:
       - .:/app
     depends_on:
@@ -34,8 +33,6 @@ services:
     build: .
     env_file:
       - ./.secrets/.env
-    environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
     depends_on:
       - db
     ports:
