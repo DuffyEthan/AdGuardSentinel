@@ -135,6 +135,12 @@ test:
   needs:
     - build
   script:
+    - echo "Installing test dependencies..."
+    - if [ -f requirements-dev.txt ]; then
+        uv pip install -r requirements-dev.txt;
+      else
+        uv pip install pytest pytest-cov;
+      fi
     - echo "Installing dbmate..."
     - curl -fsSL -o /usr/local/bin/dbmate https://github.com/amacneil/dbmate/releases/latest/download/dbmate-linux-amd64
     - chmod +x /usr/local/bin/dbmate
