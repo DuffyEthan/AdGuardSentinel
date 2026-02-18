@@ -17,8 +17,8 @@ sqlacodegen = "*"
 python-dotenv = "*"
 
 [tool.poetry.group.dev.dependencies]
-pytest = "*"
-pytest-cov = "*"
+pytest = "^7.0.0"
+pytest-cov = "^4.0.0"
 
 [tool.poetry.requires-plugins]
 poetry-plugin-export = ">=1.8"
