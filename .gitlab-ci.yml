@@ -33,7 +33,7 @@ cache:
     - pip install "poetry==$POETRY_VERSION"
     - poetry config virtualenvs.create false
     - pip install uv
-    - "[-d .venv] || python -m venv .venv"
+    - "[ -d .venv ] || python -m venv .venv"
     - source .venv/bin/activate
   cache:
     paths:
@@ -114,7 +114,9 @@ build:
   cache:
     paths:
       - .cache/pip
-    policy: push
+      - .cache/uv
+      - .venv/
+    policy: pull-push
   only:
     - branches
 
