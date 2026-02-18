@@ -35,14 +35,9 @@ def model_logs_get_between(
     publisher_id: int,
     session: Session = Depends(get_session)
 ):
-
-    print(123)
     given=ModelLogsRepository(session).get_between(t1, t2, publisher_id)
-    print(given)
     res=[]
     for x in given:
-        print(vars(x[0]),vars(x[1]))
-        print(vars(x[0])|(vars(x[1])))
         res.append(vars(x[0])|(vars(x[1])))
     return res
 
@@ -53,10 +48,5 @@ def raw_metrics_get_last_n_before(
     publisher_id: int,
     session: Session = Depends(get_session)
 ):
-    # print(RawMetricsRepository(session).get_last_n_before(t, n, publisher_id))
-
-
-        # for j in range(len(res[i])):
-        #     print(given[i][j])
     return RawMetricsRepository(session).get_last_n_before(t, n, publisher_id)
 
