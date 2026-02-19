@@ -4,10 +4,10 @@ import os
 import sqlalchemy as sa
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
-import psycopg
+# import psycopg
 import sys
 
-import ingest
+from db.scripts.ingest import ingestTimeSeries, ingestMLLog
 import numpy as np
 import pandas as pd
 
@@ -27,21 +27,21 @@ class Publisher(Base):
 def createSession():
     engine = sa.create_engine(os.environ["DATABASE_URL"])
     return sessionmaker(autoflush=False, autocommit=False, bind=engine)()
-def executeSQLFile(cursor,fileName):
-    f=open(fileName)
-    content=f.read()
-    cursor.execute(content[:content.index("-- migrate:down")])
+# def executeSQLFile(cursor,fileName):
+#     f=open(fileName)
+#     content=f.read()
+#     cursor.execute(content[:content.index("-- migrate:down")])
 def main()->int:
     argv=sys.argv
     argc=len(argv)
 
-    with psycopg.connect("dbname=%s user=%s"%(os.environ['POSTGRES_DB'],os.environ['POSTGRES_USER'])) as conn:
-        with conn.cursor() as cur:
-                executeSQLFile(cur,"../migrations/000100_extensions.sql")
-                executeSQLFile(cur,"../migrations/000200_create_publishers.sql")
-                executeSQLFile(cur,"../migrations/000300_create_raw_metrics.sql")
-                executeSQLFile(cur,"../migrations/000400_create_model_logs.sql")
-                conn.commit()
+    # with psycopg.connect("dbname=%s user=%s"%(os.environ['POSTGRES_DB'],os.environ['POSTGRES_USER'])) as conn:
+    #     with conn.cursor() as cur:
+    #             executeSQLFile(cur,"../migrations/000100_extensions.sql")
+    #             executeSQLFile(cur,"../migrations/000200_create_publishers.sql")
+    #             executeSQLFile(cur,"../migrations/000300_create_raw_metrics.sql")
+    #             executeSQLFile(cur,"../migrations/000400_create_model_logs.sql")
+    #             conn.commit()
 
     if argc<=1:
         return 0
@@ -65,7 +65,7 @@ def main()->int:
         )
 
         print(mlData)
-        ingest.ingestMLLog(session,mlData)
+        ingestMLLog(session,mlData)
     elif argv[1]=="publisher":
         session.add(
             Publisher(
@@ -110,7 +110,7 @@ def main()->int:
         )
 
         print(tsData)
-        ingest.ingestTimeSeries(session,tsData)
+        ingestTimeSeries(session,tsData)
     else:
         return 1
     session.close()
