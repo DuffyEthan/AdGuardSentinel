@@ -7,6 +7,7 @@ import numpy as np
 from sklearn.ensemble import IsolationForest
 import psycopg2
 from psycopg2 import sql
+import joblib
 
 
 # db settings - from db pod
@@ -269,3 +270,34 @@ class AnomalyDetection:
         return logs
 
 
+# freezing the model
+    def save_model(anomaly_detector, filepath = ''):
+        """
+        freezing (saving) a trained model to a .joblib file
+        
+        anomaly_detector = trained anomaly detection model
+        filepath = where I'm saving the trained model
+        """
+# compression = making a file smaller
+# compress = 3   => best option. it's fast but balanced 
+
+        if not anomaly_detector.is_fitted:
+            raise RuntimeError("Can't save the model. Train the model first with fit().")
+        
+        # saving the trained model to filepath
+        joblib.dump(anomaly_detector, filepath, compress = 3)
+
+
+    def load_model(filepath= ''):
+        """
+        unfreezing (loading) a previously saved model
+
+        filepath = where the model was saved
+
+        It loades anomaly detection object that is ready to use
+        """
+
+        anomaly_detector = joblib.load(filepath)
+        return anomaly_detector
+    
+    
