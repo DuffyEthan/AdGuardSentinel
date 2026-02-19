@@ -25,6 +25,7 @@ which fall within published benchmark ranges.
 from __future__ import annotations
 
 import os
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
@@ -33,36 +34,36 @@ import pandas as pd
 import psycopg
 
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 @dataclass(frozen=True)
 class GeneratorConfig:
-    #Configuration for synthetic metric generation.
+    """Configuration for synthetic metric generation."""
     interval_minutes: int = 5
     batch_size: int = 1000
     anomaly_duration_intervals: int = 12  # ~1 hour at 5-minute intervals
 
-    # Baseline traffic parameters
-    impressions_mean: float = 8000
-    impressions_std: float = 1200
-    clicks_mean: float = 420
-    clicks_std: float = 70
-    conversions_mean: float = 35
-    conversions_std: float = 10
+    # Baseline mean event rates per interval (Poisson lambdas)
+    impressions_lambda: int = 8000
+    clicks_lambda: int = 420
+    conversions_lambda: int = 35
 
-    # Anomaly spike multiplier range
+    # Anomaly spike multiplier range (applied to impressions)
     spike_multiplier_min: int = 2
     spike_multiplier_max: int = 4
 
 
-
 def connect_db() -> psycopg.Connection:
-    #Create a database connection using environment variables.#
+    """Create a database connection using environment variables."""
     host = os.getenv("DB_HOST", "db")
     port = int(os.getenv("DB_PORT", "5432"))
     dbname = os.getenv("DB_NAME", "StreamlitDB")
     user = os.getenv("DB_USER", "postgres")
-
-    print(f"[connect_db] host={host} port={port} dbname={dbname} user={user}")
 
     return psycopg.connect(
         host=host,
@@ -74,7 +75,7 @@ def connect_db() -> psycopg.Connection:
 
 
 def ensure_publisher_exists(conn: psycopg.Connection, publisher_id: int = 1) -> int:
-    #Ensure a publisher exists to satisfy foreign key constraints.
+    """Ensure a publisher exists to satisfy foreign key constraints."""
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -89,7 +90,7 @@ def ensure_publisher_exists(conn: psycopg.Connection, publisher_id: int = 1) -> 
 
 
 def get_aligned_start_timestamp(interval_minutes: int) -> datetime:
-    #Align the start timestamp to the nearest interval boundary.
+    """Align the start timestamp to the nearest interval boundary."""
     current_time = datetime.now(timezone.utc).replace(second=0, microsecond=0)
     aligned_minute = (current_time.minute // interval_minutes) * interval_minutes
     return current_time.replace(minute=aligned_minute)
@@ -101,58 +102,37 @@ def generate_time_series_batch(
     start_timestamp: datetime,
     random_generator: np.random.Generator,
 ) -> pd.DataFrame:
-    #Generate a synthetic batch of time-series metrics with one injected anomaly window.
+    """Generate a synthetic batch of time-series metrics with one injected anomaly window."""
     interval_delta = timedelta(minutes=config.interval_minutes)
 
-    timestamps = [
-        start_timestamp + i * interval_delta
-        for i in range(config.batch_size)
-    ]
+    timestamps = [start_timestamp + i * interval_delta for i in range(config.batch_size)]
 
-    impressions = random_generator.normal(
-        config.impressions_mean,
-        config.impressions_std,
-        config.batch_size,
-    )
-    clicks = random_generator.normal(
-        config.clicks_mean,
-        config.clicks_std,
-        config.batch_size,
-    )
-    conversions = random_generator.normal(
-        config.conversions_mean,
-        config.conversions_std,
-        config.batch_size,
-    )
+    # Poisson count generation (non-negative integers)
+    impressions = random_generator.poisson(lam=config.impressions_lambda, size=config.batch_size)
+    clicks = random_generator.poisson(lam=config.clicks_lambda, size=config.batch_size)
+    conversions = random_generator.poisson(lam=config.conversions_lambda, size=config.batch_size)
 
-    impressions = np.clip(np.rint(impressions), 0, None).astype(int)
-    clicks = np.clip(np.rint(clicks), 0, None).astype(int)
-    conversions = np.clip(np.rint(conversions), 0, None).astype(int)
-
+    # Inject anomaly: spike impressions over a contiguous window
     anomaly_window_size = min(config.anomaly_duration_intervals, config.batch_size)
-    anomaly_start_index = random_generator.integers(
-        0, config.batch_size - anomaly_window_size + 1
-    )
+    anomaly_start_index = random_generator.integers(0, config.batch_size - anomaly_window_size + 1)
     anomaly_end_index = anomaly_start_index + anomaly_window_size
 
-    spike_multiplier = random_generator.integers(
-        config.spike_multiplier_min, config.spike_multiplier_max + 1
-    )
+    spike_multiplier = random_generator.integers(config.spike_multiplier_min, config.spike_multiplier_max + 1)
     impressions[anomaly_start_index:anomaly_end_index] *= spike_multiplier
 
     return pd.DataFrame(
         {
             "bucket_timestamp": timestamps,
             "publisher_id": publisher_id,
-            "impression_count": impressions,
-            "click_count": clicks,
-            "conversion_count": conversions,
+            "impression_count": impressions.astype(int),
+            "click_count": clicks.astype(int),
+            "conversion_count": conversions.astype(int),
         }
     )
 
 
 def upsert_raw_metrics(conn: psycopg.Connection, data_frame: pd.DataFrame) -> int:
-    #Insert or update a batch into raw_metrics (rerunnable via ON CONFLICT).
+    """Insert or update a batch into raw_metrics (rerunnable via ON CONFLICT)."""
     rows = list(
         data_frame[
             ["bucket_timestamp", "publisher_id", "impression_count", "click_count", "conversion_count"]
@@ -178,18 +158,76 @@ def upsert_raw_metrics(conn: psycopg.Connection, data_frame: pd.DataFrame) -> in
     return len(rows)
 
 
+def plot_metrics_from_db(
+    publisher_id: int = 1,
+    limit: int = 1000,
+) -> None:
+    """Fetch recent rows for a publisher and plot impression/click/conversion counts."""
+    conn = connect_db()
+    try:
+        df = pd.read_sql(
+            """
+            SELECT bucket_timestamp, impression_count, click_count, conversion_count
+            FROM raw_metrics
+            WHERE publisher_id = %s
+            ORDER BY bucket_timestamp
+            LIMIT %s
+            """,
+            conn,
+            params=(publisher_id, limit),
+        )
+    finally:
+        conn.close()
+
+    if df.empty:
+        print(f"No data found for publisher_id={publisher_id}.")
+        return
+
+    df["bucket_timestamp"] = pd.to_datetime(df["bucket_timestamp"], utc=True)
+
+    plt.figure()
+    plt.plot(df["bucket_timestamp"], df["impression_count"], label="impressions")
+    plt.plot(df["bucket_timestamp"], df["click_count"], label="clicks")
+    plt.plot(df["bucket_timestamp"], df["conversion_count"], label="conversions")
+
+    plt.title(f"Raw Metrics Over Time (publisher_id={publisher_id})")
+    plt.xlabel("bucket_timestamp")
+    plt.ylabel("count")
+
+    ax = plt.gca()
+    locator = mdates.AutoDateLocator()
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
+    plt.xticks(rotation=0)
+
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+
 def main() -> None:
-    #Entry point: generate a batch and write to the database.
+    """Entry point: generate a batch and write to the database."""
     config = GeneratorConfig()
-    random_generator = np.random.default_rng(123)
+
+    # Seed handling:
+    # - If RANDOM_SEED is set, use it (reproducible)
+    # - Otherwise, use time_ns() (different each run)
+    seed_env = os.getenv("RANDOM_SEED")
+    if seed_env is not None and seed_env.strip() != "":
+        seed = int(seed_env)
+    else:
+        seed = int(time.time_ns())
+
+    print(f"[batch_data_generator] seed={seed}")
+    random_generator = np.random.default_rng(seed)
+
     publisher_id = int(os.getenv("PUBLISHER_ID", "1"))
 
     connection = connect_db()
-
     try:
         ensure_publisher_exists(connection, publisher_id)
+        start_timestamp = datetime.now(timezone.utc)
 
-        start_timestamp = get_aligned_start_timestamp(config.interval_minutes)
         batch_dataframe = generate_time_series_batch(
             config,
             publisher_id,
@@ -207,27 +245,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-conn = psycopg.connect(
-    host="localhost",
-    port=5433,
-    dbname="StreamlitDB",
-    user="postgres",
-    password="123456789"
-)
-
-df = pd.read_sql(
-    """
-    SELECT bucket_timestamp, impression_count
-    FROM raw_metrics
-    WHERE publisher_id = 1
-    ORDER BY bucket_timestamp
-    """,
-    conn
-)
-
-print(df.head())     
-print(df.tail())
-
-df.plot(x="bucket_timestamp", y="impression_count")
-plt.show()
+    plot_metrics_from_db(publisher_id=int(os.getenv("PUBLISHER_ID", "1")), limit=1000)
