@@ -10,18 +10,38 @@ services:
     volumes:
       - db_data:/var/lib/postgresql/data
       - ./db/init:/seed:ro
+    networks:
+      app-network:
+
+  fastapi:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./.secrets/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - .:/app
+    depends_on:
+      - db
+    command: uvicorn app.fastapi.main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      app-network:
 
   app:
     build: .
     env_file:
       - ./.secrets/.env
-    environment:
-      DATABASE_URL: postgresql://$${POSTGRES_USER}:$${POSTGRES_PASSWORD}@db:5432/$${POSTGRES_DB}
     depends_on:
       - db
     ports:
       - "8501:8501"
     command: ["streamlit", "run", "frontend/frontend.py"]
+    networks:
+      app-network:
 
 volumes:
   db_data:
+networks:
+  app-network:
