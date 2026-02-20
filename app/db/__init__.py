@@ -5,8 +5,10 @@ from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from app.db.models import Base
+
 # Auto-load db/.env so DATABASE_URL is available without manual export
-load_dotenv(Path(__file__).resolve().parents[2] / "db" / ".env")
+load_dotenv(Path(__file__).resolve().parents[2] / "db" / ".env", override=False)
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
@@ -18,3 +20,4 @@ else:
     engine = None
 
 SessionLocal = sessionmaker(bind=engine) if engine else None
+Base.metadata.create_all(bind=engine)
