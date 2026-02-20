@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Depends
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from app.db.session import get_session
 
 from app.db import SessionLocal
@@ -7,6 +7,8 @@ from app.db.models import ModelLogs
 from app.db.models import RawMetrics
 from app.repositories.model_logs_repository import ModelLogsRepository
 from app.repositories.raw_metrics_repository import RawMetricsRepository
+
+from app.ml._isolation_forest import run_full_pipeline
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -52,18 +54,30 @@ def raw_metrics_get_last_n_before(
 
 
 @app.post("/pipeline/train-model")  #runs full anomaly detection pipeline
-def train_model_endpoint(publisher_id: str, hours: int = 24, model_name: str = "isolation_forest_v1"):
+def train_model_endpoint(
+        publisher_id: str,
+        hours: int = 24,
+        model_name: str = "isolation_forest_v1"
+):
     """
     Trigger full pipeline: fetch -> train -> log.
     Returns {"status": "success"/"error", "records_processed": int, "records_logged": int}
-    
+
     TODO:
-    1. Import run_full_pipeline from app.ml._isolation_forest 
+    1. Import run_full_pipeline from app.ml._isolation_forest
     2. Calculate start_date = now - timedelta(hours=hours), end_date = now
     3. Call and return run_full_pipeline(start_date, end_date, publisher_id, model_name)
     """
+    now=datetime.now()
+    return run_full_pipeline(
+        start_date = now - timedelta(hours=hours),
+        end_date = now,
+        publisher_id = publisher_id,
+        model_name = model_name
+    )
+
     # TODO: IMPLEMENT THIS ENDPOINT
-    raise NotImplementedError("Implement POST /pipeline/train-model")
+    # raise NotImplementedError("Implement POST /pipeline/train-model")
 
 
 @app.get("/pipeline/results")
