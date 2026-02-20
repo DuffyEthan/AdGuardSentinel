@@ -39,10 +39,10 @@ def model_logs_get_between(
         session: Session = Depends(get_session)
 ):
     given=ModelLogsRepository(session).get_between(t1, t2, publisher_id, campaign_id)
-    res=[]
-    for x in given:
-        res.append(vars(x[0])|(vars(x[1])))
-    return res
+    # res=[]
+    # for x in given:
+    #     res.append(vars(x[0])|(vars(x[1])))
+    return given
 
 @app.get("/raw-metrics/get-last-n-before")
 def raw_metrics_get_last_n_before(
