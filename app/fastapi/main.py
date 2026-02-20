@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import FastAPI, Depends
 from datetime import datetime, timezone
 from app.db.session import get_session
@@ -30,12 +32,13 @@ def model_logs_get_between():
 
 @app.get("/model-logs/get-between")
 def model_logs_get_between(
-    t1: datetime,
-    t2: datetime,
-    publisher_id: int,
-    session: Session = Depends(get_session)
+        t1: datetime, # inclusive lower bound timestamp
+        t2: datetime, # inclusive upper bound timestamp
+        publisher_id: uuid.UUID, # filter by publisher_id
+        campaign_id: uuid.UUID, # filter by campaign_id (used in join)
+        session: Session = Depends(get_session)
 ):
-    given=ModelLogsRepository(session).get_between(t1, t2, publisher_id)
+    given=ModelLogsRepository(session).get_between(t1, t2, publisher_id, campaign_id)
     res=[]
     for x in given:
         res.append(vars(x[0])|(vars(x[1])))
@@ -43,12 +46,13 @@ def model_logs_get_between(
 
 @app.get("/raw-metrics/get-last-n-before")
 def raw_metrics_get_last_n_before(
-    t: datetime,
-    n: int,
-    publisher_id: int,
-    session: Session = Depends(get_session)
+        t: datetime, # exclusive upper-bound timestamp
+        n: int, # maximum number of rows to return
+        publisher_id: uuid.UUID | None = None,  # optionally filter by publisher_id
+        campaign_id: uuid.UUID | None = None, # optionally filter by campaign_id
+        session: Session = Depends(get_session)
 ):
-    return RawMetricsRepository(session).get_last_n_before(t, n, publisher_id)
+    return RawMetricsRepository(session).get_last_n_before(t, n, publisher_id, campaign_id)
 
 
 @app.post("/pipeline/train-model")  #runs full anomaly detection pipeline
@@ -56,9 +60,9 @@ def train_model_endpoint(publisher_id: str, hours: int = 24, model_name: str = "
     """
     Trigger full pipeline: fetch -> train -> log.
     Returns {"status": "success"/"error", "records_processed": int, "records_logged": int}
-    
+
     TODO:
-    1. Import run_full_pipeline from app.ml._isolation_forest 
+    1. Import run_full_pipeline from app.ml._isolation_forest
     2. Calculate start_date = now - timedelta(hours=hours), end_date = now
     3. Call and return run_full_pipeline(start_date, end_date, publisher_id, model_name)
     """
@@ -71,7 +75,7 @@ def get_pipeline_results(publisher_id: str, t1: datetime, t2: datetime, session:
     """
     Get raw metrics + model predictions in time range.
     Returns {"raw_metrics": [...], "model_predictions": [...], "summary": {...}}
-    
+
     TODO:
     1. Call RawMetricsRepository(session).get_last_n_before(t2, 1000, publisher_id) and filter between t1-t2
     2. Call ModelLogsRepository(session).get_between(t1, t2, publisher_id)
