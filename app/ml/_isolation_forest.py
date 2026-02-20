@@ -300,6 +300,41 @@ def load_model(filepath= 'app/ml/models/_isolation_forest.joblib'):
     anomaly_detector = joblib.load(filepath)
     return anomaly_detector
     
+def train_isolation_forest(df: pd.DataFrame, contamination: float = 0.05, threshold: float = 0.7) -> pd.DataFrame:
+    """
+    Train model and return predictions with trust_score and is_organic columns.
     
+    TODO:
+    1. Create an instance of the AnomalyDetection(contamination, threshold) class
+    2. Call model.fit(df) function - shows machine historical data
+    3. Return model.predict(df) - returns dataframe with trust score and is organic columns for each row
+    """
+    # TODO: IMPLEMENT THIS FUNCTION
+    raise NotImplementedError("Implement train_isolation_forest()")
+
+
+def run_full_pipeline(
+    start_date,
+    end_date,
+    publisher_id = None,
+    model_name: str = "isolation_forest_v1",
+    contamination: float = 0.05,
+    threshold: float = 0.7
+) -> dict:
+    """
+    Full pipeline: fetch data -> train model -> log to database.
+    Returns {"status": "success"/"error", "records_processed": int, "records_logged": int}
+    
+    TODO:
+    1. Wrap in try/except
+    2. Call fetch_raw_data(start_date, end_date, publisher_id)
+    3. Call train_isolation_forest(raw_data)
+    4. Call log_results_to_db(predictions, model_name)
+    5. Return {"status": "success", "records_processed": len(data), "records_logged": len(predictions)}
+    6. On error: return {"status": "error", "error_message": str(e)}
+    """
+    # TODO: IMPLEMENT THIS FUNCTION
+    raise NotImplementedError("Implement run_full_pipeline()")
+ 
 
  
