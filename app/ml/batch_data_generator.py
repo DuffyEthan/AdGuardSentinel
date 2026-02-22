@@ -4,6 +4,8 @@ Batch Data Generator
 Generates synthetic time-series advertising metrics and writes them
 to the raw_metrics hypertable in batch form.
 
+Adds: campaign_id feature.
+
 Parameter justification:
 
 CTR and conversion assumptions derived from industry benchmarks:
@@ -57,6 +59,9 @@ class GeneratorConfig:
     spike_multiplier_min: int = 2
     spike_multiplier_max: int = 4
 
+    # Feature window for weighted stats / rolling calculations
+    feature_window: int = 250
+
 
 def connect_db() -> psycopg.Connection:
     """Create a database connection using environment variables."""
@@ -75,7 +80,7 @@ def connect_db() -> psycopg.Connection:
 
 
 def ensure_publisher_exists(conn: psycopg.Connection, publisher_id: int = 1) -> int:
-    """Ensure a publisher exists to satisfy foreign key constraints."""
+    """Ensure a publisher exists to satisfy foreign key constraints (if any)."""
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -99,6 +104,7 @@ def get_aligned_start_timestamp(interval_minutes: int) -> datetime:
 def generate_time_series_batch(
     config: GeneratorConfig,
     publisher_id: int,
+    campaign_id: int,
     start_timestamp: datetime,
     random_generator: np.random.Generator,
 ) -> pd.DataFrame:
@@ -107,7 +113,6 @@ def generate_time_series_batch(
 
     timestamps = [start_timestamp + i * interval_delta for i in range(config.batch_size)]
 
-    # Poisson count generation (non-negative integers)
     impressions = random_generator.poisson(lam=config.impressions_lambda, size=config.batch_size)
     clicks = random_generator.poisson(lam=config.clicks_lambda, size=config.batch_size)
     conversions = random_generator.poisson(lam=config.conversions_lambda, size=config.batch_size)
@@ -124,6 +129,7 @@ def generate_time_series_batch(
         {
             "bucket_timestamp": timestamps,
             "publisher_id": publisher_id,
+            "campaign_id": campaign_id,
             "impression_count": impressions.astype(int),
             "click_count": clicks.astype(int),
             "conversion_count": conversions.astype(int),
@@ -135,16 +141,25 @@ def upsert_raw_metrics(conn: psycopg.Connection, data_frame: pd.DataFrame) -> in
     """Insert or update a batch into raw_metrics (rerunnable via ON CONFLICT)."""
     rows = list(
         data_frame[
-            ["bucket_timestamp", "publisher_id", "impression_count", "click_count", "conversion_count"]
+            [
+                "bucket_timestamp",
+                "publisher_id",
+                "campaign_id",
+                "impression_count",
+                "click_count",
+                "conversion_count",
+            ]
         ].itertuples(index=False, name=None)
     )
 
+    # IMPORTANT:
+    # This assumes your unique constraint is: (publisher_id, campaign_id, bucket_timestamp)
     query = """
     INSERT INTO raw_metrics (
-        bucket_timestamp, publisher_id, impression_count, click_count, conversion_count
+        bucket_timestamp, publisher_id, campaign_id, impression_count, click_count, conversion_count
     )
-    VALUES (%s, %s, %s, %s, %s)
-    ON CONFLICT (publisher_id, bucket_timestamp)
+    VALUES (%s, %s, %s, %s, %s, %s)
+    ON CONFLICT (publisher_id, campaign_id, bucket_timestamp)
     DO UPDATE SET
         impression_count = EXCLUDED.impression_count,
         click_count = EXCLUDED.click_count,
@@ -158,39 +173,52 @@ def upsert_raw_metrics(conn: psycopg.Connection, data_frame: pd.DataFrame) -> in
     return len(rows)
 
 
-def plot_metrics_from_db(
-    publisher_id: int = 1,
+def fetch_raw_metrics_from_db(
+    publisher_id: int,
+    campaign_id: int,
     limit: int = 1000,
-) -> None:
-    """Fetch recent rows for a publisher and plot impression/click/conversion counts."""
+) -> pd.DataFrame:
+    """Fetch recent rows for a publisher + campaign."""
     conn = connect_db()
     try:
         df = pd.read_sql(
             """
-            SELECT bucket_timestamp, impression_count, click_count, conversion_count
+            SELECT bucket_timestamp, publisher_id, campaign_id,
+                   impression_count, click_count, conversion_count
             FROM raw_metrics
-            WHERE publisher_id = %s
+            WHERE publisher_id = %s AND campaign_id = %s
             ORDER BY bucket_timestamp
             LIMIT %s
             """,
             conn,
-            params=(publisher_id, limit),
+            params=(publisher_id, campaign_id, limit),
         )
     finally:
         conn.close()
 
     if df.empty:
-        print(f"No data found for publisher_id={publisher_id}.")
-        return
+        return df
 
     df["bucket_timestamp"] = pd.to_datetime(df["bucket_timestamp"], utc=True)
+    return df
+
+
+def plot_metrics(
+    df: pd.DataFrame,
+    publisher_id: int,
+    campaign_id: int,
+) -> None:
+    """Plot impression/click/conversion counts."""
+    if df.empty:
+        print(f"No data found for publisher_id={publisher_id}, campaign_id={campaign_id}.")
+        return
 
     plt.figure()
     plt.plot(df["bucket_timestamp"], df["impression_count"], label="impressions")
     plt.plot(df["bucket_timestamp"], df["click_count"], label="clicks")
     plt.plot(df["bucket_timestamp"], df["conversion_count"], label="conversions")
 
-    plt.title(f"Raw Metrics Over Time (publisher_id={publisher_id})")
+    plt.title(f"Raw Metrics Over Time (publisher_id={publisher_id}, campaign_id={campaign_id})")
     plt.xlabel("bucket_timestamp")
     plt.ylabel("count")
 
@@ -205,39 +233,132 @@ def plot_metrics_from_db(
     plt.show()
 
 
+# ---------------------------
+# Isolation Forest features
+# ---------------------------
+
+def _weighted_stats(values: np.ndarray, weights: np.ndarray) -> tuple[float, float, float]:
+    """Return weighted mean, variance, std. Assumes 1D arrays, weights >= 0."""
+    wsum = float(np.sum(weights))
+    if wsum <= 0:
+        return (float("nan"), float("nan"), float("nan"))
+
+    mean = float(np.sum(weights * values) / wsum)
+    var = float(np.sum(weights * (values - mean) ** 2) / wsum)
+    std = float(np.sqrt(var))
+    return mean, var, std
+
+
+def add_isoforest_features(
+    df: pd.DataFrame,
+    window: int = 250,
+    eps: float = 1e-9,
+) -> pd.DataFrame:
+    """
+    Adds:
+      - Weighted mean/variance/std of impressions over last `window` rows (newer rows weighted more)
+      - Poisson rolling rate (rolling mean impressions)
+      - Log-likelihood ratio (Poisson approx: compare point x to rolling lambda)
+      - Impression->conversion rate
+      - Click wastage rate = (clicks - conversions) / clicks
+      - Impression bursts = max(impressions in window) / mean(impressions in window)
+    """
+    if df.empty:
+        return df.copy()
+
+    out = df.sort_values("bucket_timestamp").reset_index(drop=True).copy()
+
+    # Safe float versions
+    imp = out["impression_count"].astype(float).to_numpy()
+    clk = out["click_count"].astype(float).to_numpy()
+    conv = out["conversion_count"].astype(float).to_numpy()
+
+    # Rolling Poisson rate (lambda) as rolling mean
+    rolling_lambda = (
+        out["impression_count"]
+        .rolling(window=window, min_periods=max(5, window // 10))
+        .mean()
+        .astype(float)
+    )
+    out["poisson_rolling_rate"] = rolling_lambda
+
+    # Impression->conversion rate
+    out["imp_to_conv_rate"] = out["conversion_count"] / (out["impression_count"] + eps)
+
+    # Click wastage rate: (clicks - conversions)/clicks
+    out["click_wastage_rate"] = (out["click_count"] - out["conversion_count"]) / (out["click_count"] + eps)
+
+    # Impression bursts: rolling max / rolling mean
+    rolling_max_imp = out["impression_count"].rolling(window=window, min_periods=max(5, window // 10)).max()
+    rolling_mean_imp = out["impression_count"].rolling(window=window, min_periods=max(5, window // 10)).mean()
+    out["impression_bursts"] = rolling_max_imp / (rolling_mean_imp + eps)
+
+    # Log-likelihood ratio (Poisson-ish):
+    # LLR ~ log P(x | lambda_t) - log P(x | lambda_baseline)
+    # Here baseline = expanding mean (or could be long rolling mean)
+    baseline_lambda = out["impression_count"].expanding(min_periods=10).mean()
+
+    # Poisson log PMF (up to constant -log(x!)) approximation:
+    # log P(x|λ) = x log λ - λ - log(x!)
+    # When comparing two λs for same x, the -log(x!) cancels.
+    x = out["impression_count"].astype(float)
+    lam_t = rolling_lambda.fillna(baseline_lambda).clip(lower=eps)
+    lam_b = baseline_lambda.clip(lower=eps)
+    out["log_likelihood_ratio"] = (x * np.log(lam_t) - lam_t) - (x * np.log(lam_b) - lam_b)
+
+    # Weighted mean/var/std over rolling window with newer rows weighted more:
+    # weights = 1..k within window (older=1, newest=k)
+    w_mean = np.full(len(out), np.nan, dtype=float)
+    w_var = np.full(len(out), np.nan, dtype=float)
+    w_std = np.full(len(out), np.nan, dtype=float)
+
+    for i in range(len(out)):
+        start = max(0, i - window + 1)
+        segment = imp[start : i + 1]
+        k = len(segment)
+        if k < max(5, window // 10):
+            continue
+        weights = np.arange(1, k + 1, dtype=float)  # newer gets bigger weight
+        mean, var, std = _weighted_stats(segment, weights)
+        w_mean[i] = mean
+        w_var[i] = var
+        w_std[i] = std
+
+    out["mean_weighted"] = w_mean
+    out["variance_weighted"] = w_var
+    out["std_weighted"] = w_std
+
+    return out
+
+
 def main() -> None:
-    """Entry point: generate a batch and write to the database."""
     config = GeneratorConfig()
 
-    # Seed handling:
-    # - If RANDOM_SEED is set, use it (reproducible)
-    # - Otherwise, use time_ns() (different each run)
     seed_env = os.getenv("RANDOM_SEED")
-    if seed_env is not None and seed_env.strip() != "":
-        seed = int(seed_env)
-    else:
-        seed = int(time.time_ns())
-
+    seed = int(seed_env) if seed_env and seed_env.strip() else int(time.time_ns())
     print(f"[batch_data_generator] seed={seed}")
-    random_generator = np.random.default_rng(seed)
+    rng = np.random.default_rng(seed)
 
     publisher_id = int(os.getenv("PUBLISHER_ID", "1"))
+    campaign_id = int(os.getenv("CAMPAIGN_ID", "1"))
 
     connection = connect_db()
     try:
         ensure_publisher_exists(connection, publisher_id)
+
         start_timestamp = datetime.now(timezone.utc)
 
-        batch_dataframe = generate_time_series_batch(
-            config,
-            publisher_id,
-            start_timestamp,
-            random_generator,
+        batch_df = generate_time_series_batch(
+            config=config,
+            publisher_id=publisher_id,
+            campaign_id=campaign_id,
+            start_timestamp=start_timestamp,
+            random_generator=rng,
         )
 
-        affected_rows = upsert_raw_metrics(connection, batch_dataframe)
+        affected_rows = upsert_raw_metrics(connection, batch_df)
 
-        print(f"Upserted {affected_rows} rows into raw_metrics for publisher_id={publisher_id}")
+        print(f"Upserted {affected_rows} rows into raw_metrics for publisher_id={publisher_id}, campaign_id={campaign_id}")
         print(f"Start bucket_timestamp: {start_timestamp.isoformat()} | interval={config.interval_minutes}min")
     finally:
         connection.close()
@@ -245,4 +366,26 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-    plot_metrics_from_db(publisher_id=int(os.getenv("PUBLISHER_ID", "1")), limit=1000)
+
+    pub = int(os.getenv("PUBLISHER_ID", "1"))
+    camp = int(os.getenv("CAMPAIGN_ID", "1"))
+
+    df_db = fetch_raw_metrics_from_db(publisher_id=pub, campaign_id=camp, limit=1000)
+    plot_metrics(df_db, publisher_id=pub, campaign_id=camp)
+
+    # Optional: generate features for Isolation Forest input
+    if not df_db.empty:
+        features_df = add_isoforest_features(df_db, window=250)
+        print(features_df.tail(3)[
+            [
+                "bucket_timestamp",
+                "impression_count",
+                "poisson_rolling_rate",
+                "mean_weighted",
+                "std_weighted",
+                "log_likelihood_ratio",
+                "imp_to_conv_rate",
+                "click_wastage_rate",
+                "impression_bursts",
+            ]
+        ])
