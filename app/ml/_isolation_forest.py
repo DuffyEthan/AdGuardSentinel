@@ -304,14 +304,16 @@ def train_isolation_forest(df: pd.DataFrame, contamination: float = 0.05, thresh
     """
     Train model and return predictions with trust_score and is_organic columns.
     
-    TODO:
-    1. Create an instance of the AnomalyDetection(contamination, threshold) class
-    2. Call model.fit(df) function - shows machine historical data
-    3. Return model.predict(df) - returns dataframe with trust score and is organic columns for each row
     """
-    # TODO: IMPLEMENT THIS FUNCTION
-    raise NotImplementedError("Implement train_isolation_forest()")
+    # creating an instance of the AnomalyDetection (contamination, threshold) class
+    model = AnomalyDetection(contamination = contamination, threshold = threshold)
 
+    # calling model.fit(df) function - training the model on historical data
+    model.fit(df)
+
+    # returning predcitions (model.predict(df))
+    predictions = model.predict(df)
+    return predictions
 
 def run_full_pipeline(
     start_date,
