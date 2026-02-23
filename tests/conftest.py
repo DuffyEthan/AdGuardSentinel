@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.db.models import Campaign, ModelLogs, Publishers, RawMetrics
+from app.db.models import Campaign, DerivedMetrics, ModelLogs, Publishers, RawMetrics
 
 # Fixed UUIDs for deterministic test data
 PUB1_ID = uuid.UUID("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11")
@@ -150,9 +150,52 @@ def seed_data(db_session: Session) -> dict:
     db_session.add_all(ml_rows)
     db_session.flush()
 
+    # derived_metrics for publisher 1, hours 03-05
+    derived_rows: list[DerivedMetrics] = []
+    p1_derived = [
+        ("2026-01-01 03:00:00", 110.5, 8.5, 1.8, 12.0, 1.1, 0.7, 112.0, 8.8, 2.0, 4),
+        ("2026-01-01 04:00:00", 111.0, 8.7, 1.9, 11.5, 1.0, 0.8, 113.5, 9.0, 2.1, 5),
+        ("2026-01-01 05:00:00", 108.0, 8.4, 1.7, 13.0, 1.2, 0.9, 110.0, 8.6, 1.9, 6),
+    ]
+    for (
+        ts,
+        imp_m,
+        clk_m,
+        conv_m,
+        imp_s,
+        clk_s,
+        conv_s,
+        imp_wm,
+        clk_wm,
+        conv_wm,
+        ss,
+    ) in p1_derived:
+        derived_rows.append(
+            DerivedMetrics(
+                bucket_timestamp=datetime.fromisoformat(ts).replace(
+                    tzinfo=timezone.utc
+                ),
+                publisher_id=PUB1_ID,
+                campaign_id=CAMP1_ID,
+                impressions_mean=imp_m,
+                clicks_mean=clk_m,
+                conversions_mean=conv_m,
+                impressions_std=imp_s,
+                clicks_std=clk_s,
+                conversions_std=conv_s,
+                impressions_weighted_mean=imp_wm,
+                clicks_weighted_mean=clk_wm,
+                conversions_weighted_mean=conv_wm,
+                sample_size=ss,
+            )
+        )
+    db_session.add_all(derived_rows)
+    db_session.flush()
+
     return {
         "publishers": [pub1, pub2],
         "campaigns": [camp1, camp2],
         "raw_metrics": raw_rows,
         "model_logs": ml_rows,
+        "derived_metrics": derived_rows,
     }
