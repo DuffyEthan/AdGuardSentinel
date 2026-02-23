@@ -6,7 +6,7 @@ import datetime
 import decimal
 import uuid
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKeyConstraint, Index, Integer, Numeric, PrimaryKeyConstraint, String, Text, Uuid, text
+from sqlalchemy import CheckConstraint, DateTime, Double, ForeignKeyConstraint, Index, Integer, Numeric, PrimaryKeyConstraint, String, Text, Uuid, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -38,6 +38,7 @@ class Publishers(Base):
     campaign: Mapped[list['Campaign']] = relationship('Campaign', back_populates='publisher')
     ml_reports: Mapped[list['MlReports']] = relationship('MlReports', back_populates='publisher')
     model_logs: Mapped[list['ModelLogs']] = relationship('ModelLogs', back_populates='publisher')
+    derived_metrics: Mapped[list['DerivedMetrics']] = relationship('DerivedMetrics', back_populates='publisher')
     raw_metrics: Mapped[list['RawMetrics']] = relationship('RawMetrics', back_populates='publisher')
 
 
@@ -63,6 +64,7 @@ class Campaign(Base):
     end_date: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime(True))
 
     publisher: Mapped['Publishers'] = relationship('Publishers', back_populates='campaign')
+    derived_metrics: Mapped[list['DerivedMetrics']] = relationship('DerivedMetrics', back_populates='campaign')
     raw_metrics: Mapped[list['RawMetrics']] = relationship('RawMetrics', back_populates='campaign')
 
 
@@ -98,6 +100,33 @@ class ModelLogs(Base):
     publisher_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
 
     publisher: Mapped['Publishers'] = relationship('Publishers', back_populates='model_logs')
+
+
+class DerivedMetrics(Base):
+    __tablename__ = 'derived_metrics'
+    __table_args__ = (
+        ForeignKeyConstraint(['campaign_id'], ['campaign.campaign_id'], ondelete='CASCADE', name='derived_metrics_campaign_id_fkey'),
+        ForeignKeyConstraint(['publisher_id'], ['publishers.publisher_id'], ondelete='CASCADE', name='derived_metrics_publisher_id_fkey'),
+        PrimaryKeyConstraint('publisher_id', 'bucket_timestamp', 'campaign_id', name='derived_metrics_pkey'),
+        Index('derived_metrics_bucket_timestamp_idx', 'bucket_timestamp')
+    )
+
+    bucket_timestamp: Mapped[datetime.datetime] = mapped_column(DateTime(True), primary_key=True)
+    publisher_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    campaign_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    sample_size: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text('250'))
+    impressions_mean: Mapped[Optional[float]] = mapped_column(Double(53))
+    clicks_mean: Mapped[Optional[float]] = mapped_column(Double(53))
+    conversions_mean: Mapped[Optional[float]] = mapped_column(Double(53))
+    impressions_std: Mapped[Optional[float]] = mapped_column(Double(53))
+    clicks_std: Mapped[Optional[float]] = mapped_column(Double(53))
+    conversions_std: Mapped[Optional[float]] = mapped_column(Double(53))
+    impressions_weighted_mean: Mapped[Optional[float]] = mapped_column(Double(53))
+    clicks_weighted_mean: Mapped[Optional[float]] = mapped_column(Double(53))
+    conversions_weighted_mean: Mapped[Optional[float]] = mapped_column(Double(53))
+
+    campaign: Mapped['Campaign'] = relationship('Campaign', back_populates='derived_metrics')
+    publisher: Mapped['Publishers'] = relationship('Publishers', back_populates='derived_metrics')
 
 
 class RawMetrics(Base):

@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict dbAfGkS48IeoY0LsP1o0HjtAAQzCEPIOkp7Le2OLnrVznxwXM0ueIcFLOsFsp7x
+\restrict r3XR4XqTBtdFCjfASklT1sl8rAmauYz0g9BE9uewaaq2jjGU6xT2NPUIMUHlQ7Z
 
 -- Dumped from database version 16.11
 -- Dumped by pg_dump version 16.11
@@ -59,6 +59,27 @@ CREATE TABLE public.campaign (
     publisher_id uuid NOT NULL,
     start_date timestamp with time zone NOT NULL,
     end_date timestamp with time zone
+);
+
+
+--
+-- Name: derived_metrics; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.derived_metrics (
+    bucket_timestamp timestamp with time zone NOT NULL,
+    publisher_id uuid NOT NULL,
+    campaign_id uuid NOT NULL,
+    impressions_mean double precision,
+    clicks_mean double precision,
+    conversions_mean double precision,
+    impressions_std double precision,
+    clicks_std double precision,
+    conversions_std double precision,
+    impressions_weighted_mean double precision,
+    clicks_weighted_mean double precision,
+    conversions_weighted_mean double precision,
+    sample_size integer DEFAULT 250 NOT NULL
 );
 
 
@@ -139,6 +160,14 @@ ALTER TABLE ONLY public.campaign
 
 
 --
+-- Name: derived_metrics derived_metrics_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.derived_metrics
+    ADD CONSTRAINT derived_metrics_pkey PRIMARY KEY (publisher_id, bucket_timestamp, campaign_id);
+
+
+--
 -- Name: ml_reports ml_reports_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -187,6 +216,13 @@ ALTER TABLE ONLY public.schema_migrations
 
 
 --
+-- Name: derived_metrics_bucket_timestamp_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX derived_metrics_bucket_timestamp_idx ON public.derived_metrics USING btree (bucket_timestamp DESC);
+
+
+--
 -- Name: model_logs_timestamp_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -206,6 +242,22 @@ CREATE INDEX raw_metrics_bucket_timestamp_idx ON public.raw_metrics USING btree 
 
 ALTER TABLE ONLY public.campaign
     ADD CONSTRAINT campaign_publisher_id_fkey FOREIGN KEY (publisher_id) REFERENCES public.publishers(publisher_id) ON DELETE CASCADE;
+
+
+--
+-- Name: derived_metrics derived_metrics_campaign_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.derived_metrics
+    ADD CONSTRAINT derived_metrics_campaign_id_fkey FOREIGN KEY (campaign_id) REFERENCES public.campaign(campaign_id) ON DELETE CASCADE;
+
+
+--
+-- Name: derived_metrics derived_metrics_publisher_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.derived_metrics
+    ADD CONSTRAINT derived_metrics_publisher_id_fkey FOREIGN KEY (publisher_id) REFERENCES public.publishers(publisher_id) ON DELETE CASCADE;
 
 
 --
@@ -252,5 +304,5 @@ ALTER TABLE ONLY public.raw_metrics
 -- PostgreSQL database dump complete
 --
 
-\unrestrict dbAfGkS48IeoY0LsP1o0HjtAAQzCEPIOkp7Le2OLnrVznxwXM0ueIcFLOsFsp7x
+\unrestrict r3XR4XqTBtdFCjfASklT1sl8rAmauYz0g9BE9uewaaq2jjGU6xT2NPUIMUHlQ7Z
 
