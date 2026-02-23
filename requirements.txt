@@ -9,3 +9,5 @@ sqlacodegen
 python-dotenv
 pytest
 pytest-cov
+scikit-learn
+psycopg2-binary

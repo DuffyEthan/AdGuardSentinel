@@ -257,14 +257,14 @@ No manual database setup is needed in CI.
 1. Navigate to the project directory
 2. Create environment configuration - copied from .secrets\.env.example 
 3. Copy the env file to the db folder (.\.secrets\.env .\db\.env)
-4. Start the database and FastAPI services: "docker-compose up fastapi"
+4. Start the database and FastAPI services: "docker-compose down", "docker compose build --no-cache", "docker-compose up fastapi"
 5. Verify its working, open http://localhost:8000, should see "{"Hello":"World"}"
 6. To stop the services: "docker-compose down"
 
 Current available Endpoints:
-GET / - Health check
-GET /model-logs/get-between?t1=<datetime>&t2=<datetime>&publisher_id=<id> - Get model logs
-GET /raw-metrics/get-last-n-before?t=<datetime>&n=<count>&publisher_id=<id> - Get metrics
+1. GET / - Health check
+2. GET /model-logs/get-between?t1=<datetime>&t2=<datetime>&publisher_id=<id> - Get model logs
+3. GET /raw-metrics/get-last-n-before?t=<datetime>&n=<count>&publisher_id=<id> - Get metrics
 
 
 ## Contributors
