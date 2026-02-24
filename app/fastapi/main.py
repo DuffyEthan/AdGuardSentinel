@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import FastAPI, Depends
 from datetime import datetime, timezone, timedelta
 from app.db.session import get_session
@@ -32,12 +34,13 @@ def model_logs_get_between():
 
 @app.get("/model-logs/get-between")
 def model_logs_get_between(
-    t1: datetime,
-    t2: datetime,
-    publisher_id: int,
-    session: Session = Depends(get_session)
+        t1: datetime, # inclusive lower bound timestamp
+        t2: datetime, # inclusive upper bound timestamp
+        publisher_id: uuid.UUID, # filter by publisher_id
+        campaign_id: uuid.UUID, # filter by campaign_id (used in join)
+        session: Session = Depends(get_session)
 ):
-    given=ModelLogsRepository(session).get_between(t1, t2, publisher_id)
+    given=ModelLogsRepository(session).get_between(t1, t2, publisher_id, campaign_id)
     res=[]
     for x in given:
         res.append(vars(x[0])|(vars(x[1])))
@@ -45,12 +48,13 @@ def model_logs_get_between(
 
 @app.get("/raw-metrics/get-last-n-before")
 def raw_metrics_get_last_n_before(
-    t: datetime,
-    n: int,
-    publisher_id: int,
-    session: Session = Depends(get_session)
+        t: datetime, # exclusive upper-bound timestamp
+        n: int, # maximum number of rows to return
+        publisher_id: uuid.UUID | None = None,  # optionally filter by publisher_id
+        campaign_id: uuid.UUID | None = None, # optionally filter by campaign_id
+        session: Session = Depends(get_session)
 ):
-    return RawMetricsRepository(session).get_last_n_before(t, n, publisher_id)
+    return RawMetricsRepository(session).get_last_n_before(t, n, publisher_id, campaign_id)
 
 
 @app.post("/pipeline/train-model")  #runs full anomaly detection pipeline
