@@ -315,12 +315,6 @@ def train_isolation_forest(df: pd.DataFrame, contamination: float = 0.05, thresh
     predictions = model.predict(df)
     return predictions
 
-    # calling model.fit(df) function - training the model on historical data
-    model.fit(df)
-
-    # returning predcitions (model.predict(df))
-    predictions = model.predict(df)
-    return predictions
 
 def run_full_pipeline(
     start_date,
