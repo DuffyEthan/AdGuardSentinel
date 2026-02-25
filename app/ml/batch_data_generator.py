@@ -28,17 +28,22 @@ from __future__ import annotations
 
 import os
 import time
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 import numpy as np
 import pandas as pd
-import psycopg
 
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
 from dotenv import load_dotenv
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.orm import Session
+
+from app.db import SessionLocal
+from app.db.models import Campaign, Publishers, RawMetrics
 
 load_dotenv()
 
@@ -46,6 +51,7 @@ load_dotenv()
 @dataclass(frozen=True)
 class GeneratorConfig:
     """Configuration for synthetic metric generation."""
+
     interval_minutes: int = 5
     batch_size: int = 1000
     anomaly_duration_intervals: int = 12  # ~1 hour at 5-minute intervals
@@ -63,35 +69,41 @@ class GeneratorConfig:
     feature_window: int = 250
 
 
-def connect_db() -> psycopg.Connection:
-    """Create a database connection using environment variables."""
-    host = os.getenv("DB_HOST", "db")
-    port = int(os.getenv("DB_PORT", "5432"))
-    dbname = os.getenv("DB_NAME", "StreamlitDB")
-    user = os.getenv("DB_USER", "postgres")
-
-    return psycopg.connect(
-        host=host,
-        port=port,
-        dbname=dbname,
-        user=user,
-        password=os.getenv("DB_PASSWORD", "123456789"),
-    )
+DEFAULT_PUBLISHER_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
+DEFAULT_CAMPAIGN_ID = uuid.UUID("00000000-0000-0000-0000-000000000002")
 
 
-def ensure_publisher_exists(conn: psycopg.Connection, publisher_id: int = 1) -> int:
-    """Ensure a publisher exists to satisfy foreign key constraints (if any)."""
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            INSERT INTO publishers (publisher_id, publisher_name)
-            VALUES (%s, %s)
-            ON CONFLICT (publisher_id) DO NOTHING
-            """,
-            (publisher_id, "Test Publisher"),
+def ensure_publisher_exists(
+    session: Session,
+    publisher_id: uuid.UUID = DEFAULT_PUBLISHER_ID,
+) -> uuid.UUID:
+    """Ensure a publisher exists to satisfy foreign key constraints."""
+    existing = session.get(Publishers, publisher_id)
+    if existing is None:
+        session.add(
+            Publishers(publisher_id=publisher_id, publisher_name="Test Publisher")
         )
-    conn.commit()
+        session.flush()
     return publisher_id
+
+
+def ensure_campaign_exists(
+    session: Session,
+    campaign_id: uuid.UUID = DEFAULT_CAMPAIGN_ID,
+    publisher_id: uuid.UUID = DEFAULT_PUBLISHER_ID,
+) -> uuid.UUID:
+    """Ensure a campaign exists to satisfy foreign key constraints."""
+    existing = session.get(Campaign, campaign_id)
+    if existing is None:
+        session.add(
+            Campaign(
+                campaign_id=campaign_id,
+                publisher_id=publisher_id,
+                start_date=datetime.now(timezone.utc),
+            )
+        )
+        session.flush()
+    return campaign_id
 
 
 def get_aligned_start_timestamp(interval_minutes: int) -> datetime:
@@ -103,26 +115,36 @@ def get_aligned_start_timestamp(interval_minutes: int) -> datetime:
 
 def generate_time_series_batch(
     config: GeneratorConfig,
-    publisher_id: int,
-    campaign_id: int,
+    publisher_id: uuid.UUID,
+    campaign_id: uuid.UUID,
     start_timestamp: datetime,
     random_generator: np.random.Generator,
 ) -> pd.DataFrame:
     """Generate a synthetic batch of time-series metrics with one injected anomaly window."""
     interval_delta = timedelta(minutes=config.interval_minutes)
 
-    timestamps = [start_timestamp + i * interval_delta for i in range(config.batch_size)]
+    timestamps = [
+        start_timestamp + i * interval_delta for i in range(config.batch_size)
+    ]
 
-    impressions = random_generator.poisson(lam=config.impressions_lambda, size=config.batch_size)
+    impressions = random_generator.poisson(
+        lam=config.impressions_lambda, size=config.batch_size
+    )
     clicks = random_generator.poisson(lam=config.clicks_lambda, size=config.batch_size)
-    conversions = random_generator.poisson(lam=config.conversions_lambda, size=config.batch_size)
+    conversions = random_generator.poisson(
+        lam=config.conversions_lambda, size=config.batch_size
+    )
 
     # Inject anomaly: spike impressions over a contiguous window
     anomaly_window_size = min(config.anomaly_duration_intervals, config.batch_size)
-    anomaly_start_index = random_generator.integers(0, config.batch_size - anomaly_window_size + 1)
+    anomaly_start_index = random_generator.integers(
+        0, config.batch_size - anomaly_window_size + 1
+    )
     anomaly_end_index = anomaly_start_index + anomaly_window_size
 
-    spike_multiplier = random_generator.integers(config.spike_multiplier_min, config.spike_multiplier_max + 1)
+    spike_multiplier = random_generator.integers(
+        config.spike_multiplier_min, config.spike_multiplier_max + 1
+    )
     impressions[anomaly_start_index:anomaly_end_index] *= spike_multiplier
 
     return pd.DataFrame(
@@ -137,11 +159,58 @@ def generate_time_series_batch(
     )
 
 
-def upsert_raw_metrics(conn: psycopg.Connection, data_frame: pd.DataFrame) -> int:
+def upsert_raw_metrics(session: Session, data_frame: pd.DataFrame) -> int:
     """Insert or update a batch into raw_metrics (rerunnable via ON CONFLICT)."""
-    rows = list(
-        data_frame[
-            [
+    rows = [
+        {
+            "bucket_timestamp": row.bucket_timestamp,
+            "publisher_id": row.publisher_id,
+            "campaign_id": row.campaign_id,
+            "impression_count": int(row.impression_count),
+            "click_count": int(row.click_count),
+            "conversion_count": int(row.conversion_count),
+        }
+        for row in data_frame.itertuples(index=False)
+    ]
+
+    if not rows:
+        return 0
+
+    stmt = insert(RawMetrics).values(rows)
+    stmt = stmt.on_conflict_do_update(
+        constraint="raw_metrics_pkey",
+        set_={
+            "impression_count": stmt.excluded.impression_count,
+            "click_count": stmt.excluded.click_count,
+            "conversion_count": stmt.excluded.conversion_count,
+        },
+    )
+    session.execute(stmt)
+    session.flush()
+    return len(rows)
+
+
+def fetch_raw_metrics_from_db(
+    session: Session,
+    publisher_id: uuid.UUID,
+    campaign_id: uuid.UUID,
+    limit: int = 1000,
+) -> pd.DataFrame:
+    """Fetch recent rows for a publisher + campaign."""
+    rows = (
+        session.query(RawMetrics)
+        .filter(
+            RawMetrics.publisher_id == publisher_id,
+            RawMetrics.campaign_id == campaign_id,
+        )
+        .order_by(RawMetrics.bucket_timestamp)
+        .limit(limit)
+        .all()
+    )
+
+    if not rows:
+        return pd.DataFrame(
+            columns=[
                 "bucket_timestamp",
                 "publisher_id",
                 "campaign_id",
@@ -149,68 +218,35 @@ def upsert_raw_metrics(conn: psycopg.Connection, data_frame: pd.DataFrame) -> in
                 "click_count",
                 "conversion_count",
             ]
-        ].itertuples(index=False, name=None)
-    )
-
-    # IMPORTANT:
-    # This assumes your unique constraint is: (publisher_id, campaign_id, bucket_timestamp)
-    query = """
-    INSERT INTO raw_metrics (
-        bucket_timestamp, publisher_id, campaign_id, impression_count, click_count, conversion_count
-    )
-    VALUES (%s, %s, %s, %s, %s, %s)
-    ON CONFLICT (publisher_id, campaign_id, bucket_timestamp)
-    DO UPDATE SET
-        impression_count = EXCLUDED.impression_count,
-        click_count = EXCLUDED.click_count,
-        conversion_count = EXCLUDED.conversion_count;
-    """
-
-    with conn.cursor() as cur:
-        cur.executemany(query, rows)
-
-    conn.commit()
-    return len(rows)
-
-
-def fetch_raw_metrics_from_db(
-    publisher_id: int,
-    campaign_id: int,
-    limit: int = 1000,
-) -> pd.DataFrame:
-    """Fetch recent rows for a publisher + campaign."""
-    conn = connect_db()
-    try:
-        df = pd.read_sql(
-            """
-            SELECT bucket_timestamp, publisher_id, campaign_id,
-                   impression_count, click_count, conversion_count
-            FROM raw_metrics
-            WHERE publisher_id = %s AND campaign_id = %s
-            ORDER BY bucket_timestamp
-            LIMIT %s
-            """,
-            conn,
-            params=(publisher_id, campaign_id, limit),
         )
-    finally:
-        conn.close()
 
-    if df.empty:
-        return df
-
+    df = pd.DataFrame(
+        [
+            {
+                "bucket_timestamp": r.bucket_timestamp,
+                "publisher_id": r.publisher_id,
+                "campaign_id": r.campaign_id,
+                "impression_count": r.impression_count,
+                "click_count": r.click_count,
+                "conversion_count": r.conversion_count,
+            }
+            for r in rows
+        ]
+    )
     df["bucket_timestamp"] = pd.to_datetime(df["bucket_timestamp"], utc=True)
     return df
 
 
 def plot_metrics(
     df: pd.DataFrame,
-    publisher_id: int,
-    campaign_id: int,
+    publisher_id: uuid.UUID,
+    campaign_id: uuid.UUID,
 ) -> None:
     """Plot impression/click/conversion counts."""
     if df.empty:
-        print(f"No data found for publisher_id={publisher_id}, campaign_id={campaign_id}.")
+        print(
+            f"No data found for publisher_id={publisher_id}, campaign_id={campaign_id}."
+        )
         return
 
     plt.figure()
@@ -218,7 +254,9 @@ def plot_metrics(
     plt.plot(df["bucket_timestamp"], df["click_count"], label="clicks")
     plt.plot(df["bucket_timestamp"], df["conversion_count"], label="conversions")
 
-    plt.title(f"Raw Metrics Over Time (publisher_id={publisher_id}, campaign_id={campaign_id})")
+    plt.title(
+        f"Raw Metrics Over Time (publisher_id={publisher_id}, campaign_id={campaign_id})"
+    )
     plt.xlabel("bucket_timestamp")
     plt.ylabel("count")
 
@@ -237,7 +275,10 @@ def plot_metrics(
 # Isolation Forest features
 # ---------------------------
 
-def _weighted_stats(values: np.ndarray, weights: np.ndarray) -> tuple[float, float, float]:
+
+def _weighted_stats(
+    values: np.ndarray, weights: np.ndarray
+) -> tuple[float, float, float]:
     """Return weighted mean, variance, std. Assumes 1D arrays, weights >= 0."""
     wsum = float(np.sum(weights))
     if wsum <= 0:
@@ -286,11 +327,21 @@ def add_isoforest_features(
     out["imp_to_conv_rate"] = out["conversion_count"] / (out["impression_count"] + eps)
 
     # Click wastage rate: (clicks - conversions)/clicks
-    out["click_wastage_rate"] = (out["click_count"] - out["conversion_count"]) / (out["click_count"] + eps)
+    out["click_wastage_rate"] = (out["click_count"] - out["conversion_count"]) / (
+        out["click_count"] + eps
+    )
 
     # Impression bursts: rolling max / rolling mean
-    rolling_max_imp = out["impression_count"].rolling(window=window, min_periods=max(5, window // 10)).max()
-    rolling_mean_imp = out["impression_count"].rolling(window=window, min_periods=max(5, window // 10)).mean()
+    rolling_max_imp = (
+        out["impression_count"]
+        .rolling(window=window, min_periods=max(5, window // 10))
+        .max()
+    )
+    rolling_mean_imp = (
+        out["impression_count"]
+        .rolling(window=window, min_periods=max(5, window // 10))
+        .mean()
+    )
     out["impression_bursts"] = rolling_max_imp / (rolling_mean_imp + eps)
 
     # Log-likelihood ratio (Poisson-ish):
@@ -304,7 +355,9 @@ def add_isoforest_features(
     x = out["impression_count"].astype(float)
     lam_t = rolling_lambda.fillna(baseline_lambda).clip(lower=eps)
     lam_b = baseline_lambda.clip(lower=eps)
-    out["log_likelihood_ratio"] = (x * np.log(lam_t) - lam_t) - (x * np.log(lam_b) - lam_b)
+    out["log_likelihood_ratio"] = (x * np.log(lam_t) - lam_t) - (
+        x * np.log(lam_b) - lam_b
+    )
 
     # Weighted mean/var/std over rolling window with newer rows weighted more:
     # weights = 1..k within window (older=1, newest=k)
@@ -339,12 +392,23 @@ def main() -> None:
     print(f"[batch_data_generator] seed={seed}")
     rng = np.random.default_rng(seed)
 
-    publisher_id = int(os.getenv("PUBLISHER_ID", "1"))
-    campaign_id = int(os.getenv("CAMPAIGN_ID", "1"))
+    pub_env = os.getenv("PUBLISHER_ID")
+    publisher_id = (
+        uuid.UUID(pub_env) if pub_env and pub_env.strip() else DEFAULT_PUBLISHER_ID
+    )
 
-    connection = connect_db()
+    camp_env = os.getenv("CAMPAIGN_ID")
+    campaign_id = (
+        uuid.UUID(camp_env) if camp_env and camp_env.strip() else DEFAULT_CAMPAIGN_ID
+    )
+
+    assert SessionLocal is not None, (
+        "DATABASE_URL is not configured; cannot create a session."
+    )
+    session = SessionLocal()
     try:
-        ensure_publisher_exists(connection, publisher_id)
+        ensure_publisher_exists(session, publisher_id)
+        ensure_campaign_exists(session, campaign_id, publisher_id)
 
         start_timestamp = datetime.now(timezone.utc)
 
@@ -356,36 +420,60 @@ def main() -> None:
             random_generator=rng,
         )
 
-        affected_rows = upsert_raw_metrics(connection, batch_df)
+        affected_rows = upsert_raw_metrics(session, batch_df)
+        session.commit()
 
-        print(f"Upserted {affected_rows} rows into raw_metrics for publisher_id={publisher_id}, campaign_id={campaign_id}")
-        print(f"Start bucket_timestamp: {start_timestamp.isoformat()} | interval={config.interval_minutes}min")
+        print(
+            f"Upserted {affected_rows} rows into raw_metrics "
+            f"for publisher_id={publisher_id}, campaign_id={campaign_id}"
+        )
+        print(
+            f"Start bucket_timestamp: {start_timestamp.isoformat()} | interval={config.interval_minutes}min"
+        )
+    except Exception:
+        session.rollback()
+        raise
     finally:
-        connection.close()
+        session.close()
 
 
 if __name__ == "__main__":
     main()
 
-    pub = int(os.getenv("PUBLISHER_ID", "1"))
-    camp = int(os.getenv("CAMPAIGN_ID", "1"))
+    pub_env = os.getenv("PUBLISHER_ID")
+    pub = uuid.UUID(pub_env) if pub_env and pub_env.strip() else DEFAULT_PUBLISHER_ID
 
-    df_db = fetch_raw_metrics_from_db(publisher_id=pub, campaign_id=camp, limit=1000)
+    camp_env = os.getenv("CAMPAIGN_ID")
+    camp = uuid.UUID(camp_env) if camp_env and camp_env.strip() else DEFAULT_CAMPAIGN_ID
+
+    assert SessionLocal is not None, (
+        "DATABASE_URL is not configured; cannot create a session."
+    )
+    session = SessionLocal()
+    try:
+        df_db = fetch_raw_metrics_from_db(
+            session, publisher_id=pub, campaign_id=camp, limit=1000
+        )
+    finally:
+        session.close()
+
     plot_metrics(df_db, publisher_id=pub, campaign_id=camp)
 
     # Optional: generate features for Isolation Forest input
     if not df_db.empty:
         features_df = add_isoforest_features(df_db, window=250)
-        print(features_df.tail(3)[
-            [
-                "bucket_timestamp",
-                "impression_count",
-                "poisson_rolling_rate",
-                "mean_weighted",
-                "std_weighted",
-                "log_likelihood_ratio",
-                "imp_to_conv_rate",
-                "click_wastage_rate",
-                "impression_bursts",
+        print(
+            features_df.tail(3)[
+                [
+                    "bucket_timestamp",
+                    "impression_count",
+                    "poisson_rolling_rate",
+                    "mean_weighted",
+                    "std_weighted",
+                    "log_likelihood_ratio",
+                    "imp_to_conv_rate",
+                    "click_wastage_rate",
+                    "impression_bursts",
+                ]
             ]
-        ])
+        )
