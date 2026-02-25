@@ -47,12 +47,6 @@ const DEMO_FRAUD_EVENTS: FraudEvent[] = [
 
 const DEMO_OVERVIEW: PublisherOverview = { trusted: 77, watchlist: 7, fraudulent: 16 };
 
-const DEMO_MINI_PIE: MiniPieSegment[] = [
-  { value: 78, color: '#4caf50', label: '78%' },
-  { value: 77, color: '#ffc107', label: '77%' },
-  { value: 22, color: '#e53935' },
-];
-
 const DEMO_INIT_MESSAGES: ChatMessage[] = [
   {
     role: 'assistant',
@@ -97,7 +91,6 @@ function SentinelDashboard({
   suspiciousPublishers = 12,
   avgNetworkCtr        = 1.9,
   fraudEventsLast24h   = 17,
-  miniPieSegments      = DEMO_MINI_PIE,
   publishers           = DEMO_PUBLISHERS,
   trustBuckets         = DEMO_TRUST_BUCKETS,
   fraudEvents          = DEMO_FRAUD_EVENTS,
@@ -168,9 +161,6 @@ function SentinelDashboard({
         <StatCard label="Suspicious Publishers"  value={suspiciousPublishers} variant="orange" />
         <StatCard label="Avg Network CTR"        value={`${avgNetworkCtr}%`}  variant="orange" />
         <StatCard label="Fraud Events (Last 24h)" value={fraudEventsLast24h}  variant="red" />
-        <div className="stat-card stat-card--mini-pie">
-          <MiniPieChart segments={miniPieSegments} size={90} />
-        </div>
       </div>
 
       {/* ── Main content ──────────────────────────────────────────────────── */}
@@ -192,7 +182,7 @@ function SentinelDashboard({
         {/* Right column */}
         <div className="sentinel-right">
           <PublisherOverviewChart overview={overview} />
-          <SentinelAssistant
+          {/* <SentinelAssistant
             publishers={publishers.map(p => p.name)}
             selectedPublisher={selectedPublisher}
             onPublisherChange={setSelectedPublisher}
@@ -201,7 +191,7 @@ function SentinelDashboard({
             onCompareNetwork={handleCompareNetwork}
             messages={messages}
             onSendMessage={handleSendMessage}
-          />
+          /> */}
         </div>
       </div>
     </div>

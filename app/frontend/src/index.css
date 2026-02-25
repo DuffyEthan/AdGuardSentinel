@@ -83,6 +83,7 @@ body {
   font-size: 3rem;
   font-weight: 800;
   letter-spacing: 0.5px;
+  margin-top: -2rem;
   margin-bottom: 0.25rem;
   color: var(--accent-dark);
   transition: color 0.3s ease;
@@ -98,7 +99,7 @@ body {
 .panel {
   background: var(--panel-bg);
   border: 1px solid var(--border-subtle);
-  border-radius: 18px;
+  border-radius: 10px;
   padding: 1.25rem;
   box-shadow: 0 4px 20px var(--panel-shadow);
   transition: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
@@ -150,7 +151,7 @@ a:hover {
 .sidebar {
   position: fixed;
   left: 0;
-  top: 60px;
+  top: 50px;
   width: 200px;
   height: calc(100vh - 60px);
   background: var(--bg-secondary);
@@ -313,26 +314,13 @@ a:hover {
   margin: 1rem 0;
 }
 
-/* Top bar with back button */
-.top-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1.5rem;
-}
-
-.top-bar .btn {
-  width: auto;
-  padding: 0.6rem 1.2rem;
-}
-
 /* Navbar */
 .navbar {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  height: 70px;
+  height: 50px;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-subtle);
   display: flex;
@@ -405,7 +393,7 @@ a:hover {
 .stat-card {
   flex: 1;
   min-width: 120px;
-  border-radius: 14px;
+  border-radius: 8px;
   padding: 0.85rem 1.1rem;
   color: #fff;
   transition: box-shadow 0.2s ease;
@@ -428,45 +416,6 @@ a:hover {
   font-size: 2rem;
   font-weight: 800;
   line-height: 1.1;
-}
-
-/* Mini pie in stats row */
-.stat-card--mini-pie {
-  background: var(--panel-bg);
-  border: 1px solid var(--border-subtle);
-  box-shadow: 0 4px 20px var(--panel-shadow);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  padding: 0.5rem;
-}
-
-.mini-pie-wrapper {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.mini-pie-labels {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-}
-
-.mini-pie-label {
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-  font-size: 0.75rem;
-  color: var(--text-primary);
-}
-
-.mini-pie-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
 }
 
 /* ── Main grid ───────────────────────────────────────────────── */
@@ -553,7 +502,7 @@ a:hover {
   width: auto;
   padding: 0.45rem 1rem;
   font-size: 0.85rem;
-  border-radius: 10px;
+  border-radius: 8px;
 }
 
 /* Publisher name */

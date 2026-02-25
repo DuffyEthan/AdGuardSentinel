@@ -59,12 +59,10 @@ function Dashboard() {
       />
       <div className="with-sidebar">
         <div className="main-content">
-          <div className="top-bar">
             <div>
-              <h1 className="project-title">{selectedPublisher.campaign.name + " // " + selectedPublisher.name}</h1>
-              <p className="subtitle">Synthetic time-series data: f(x) = 2 + sin(10x)</p>
+                <h1 className="project-title">{selectedPublisher.campaign.name + " // " + selectedPublisher.name}</h1>
+                <p className="subtitle">Synthetic time-series data: f(x) = 2 + sin(10x)</p>
             </div>
-          </div>
 
           <div className="panel">
             <TimeSeriesChart
