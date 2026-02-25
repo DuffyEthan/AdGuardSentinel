@@ -10,7 +10,7 @@ from app.db.models import RawMetrics
 from app.repositories.model_logs_repository import ModelLogsRepository
 from app.repositories.raw_metrics_repository import RawMetricsRepository
 from app.repositories.sentinel_repository import SentinelRepository
-from app.services import sentinel_service
+from app.fastapi.services.sentinel_service import sentinel_service
 
 from app.ml._isolation_forest import run_full_pipeline
 
