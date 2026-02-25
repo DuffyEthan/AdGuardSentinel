@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from app.services.sentinel_service import (
+from app.fastapi.services.sentinel_service import (
     compare_publisher_to_network,
     get_trust_score_explanation,
 )
