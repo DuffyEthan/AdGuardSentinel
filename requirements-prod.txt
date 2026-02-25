@@ -1,3 +1,7 @@
+fastapi[standard]>=0.113.0,<0.114.0 ; python_version >= "3.11"
+uvicorn[standard] ; python_version >= "3.11"
+scikit-learn ; python_version >= "3.11"
+psycopg2-binary ; python_version >= "3.11"
 altair==6.0.0 ; python_version >= "3.11"
 attrs==25.4.0 ; python_version >= "3.11"
 blinker==1.9.0 ; python_version >= "3.11"

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import numpy as np
 import pytest
 
-from app.services.derived_metrics_service import (
+from app.fastapi.services.derived_metrics_service import (
     MIN_PERIODS,
     SAMPLE_SIZE,
     compute_column_stats,
