@@ -14,6 +14,9 @@ function Navbar() {
         <button className="navbar-btn" onClick={() => navigate('/dashboard')}>
           Publisher Dashboard
         </button>
+        <button className="navbar-btn" onClick={() => navigate('/sentinel')}>
+          Sentinel
+        </button>
       </div>
       <div className="navbar-right">
         <button className="navbar-btn" onClick={toggleTheme}>
