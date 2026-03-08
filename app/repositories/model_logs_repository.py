@@ -33,3 +33,13 @@ class ModelLogsRepository(BaseRepository):
         )
 
         return query.order_by(asc(ModelLogs.timestamp)).all()
+
+    def bulk_insert(self, tuples: list[tuple]) -> None: # Insert model log rows from a list of (timestamp, publisher_id, model_name, score) tuples.
+        if not tuples:
+            return
+
+        keys = ("timestamp", "publisher_id", "model_name", "score")
+        recs = [dict(zip(keys, t)) for t in tuples]
+
+        self.session.bulk_insert_mappings(ModelLogs, recs)
+        self.session.flush()

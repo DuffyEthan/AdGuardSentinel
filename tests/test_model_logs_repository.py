@@ -102,3 +102,107 @@ class TestGetBetween:
         assert model_log.score == Decimal("0.80")
         assert raw_metric.bucket_timestamp == t
         assert raw_metric.impression_count == 110
+
+
+class TestBulkInsert:
+    # Use Feb 2026 timestamps to avoid collisions with seed_data (Jan 2026)
+    _BASE_TS = datetime(2026, 2, 1, 0, 0, tzinfo=timezone.utc)
+    _TS_1H = datetime(2026, 2, 1, 1, 0, tzinfo=timezone.utc)
+    _TS_2H = datetime(2026, 2, 1, 2, 0, tzinfo=timezone.utc)
+
+    def test_inserts_single_tuple(self, db_session, seed_data):
+        repo = ModelLogsRepository(db_session)
+        tuples = [(self._BASE_TS, PUB1_ID, "markov_v1", Decimal("0.42"))]
+
+        repo.bulk_insert(tuples)
+
+        rows = (
+            db_session.query(ModelLogs)
+            .filter(
+                ModelLogs.publisher_id == PUB1_ID,
+                ModelLogs.timestamp == self._BASE_TS,
+            )
+            .all()
+        )
+        assert len(rows) == 1
+
+    def test_inserts_multiple_tuples(self, db_session, seed_data):
+        repo = ModelLogsRepository(db_session)
+        tuples = [
+            (self._BASE_TS, PUB1_ID, "markov_v1", Decimal("0.10")),
+            (self._TS_1H, PUB1_ID, "markov_v1", Decimal("0.20")),
+            (self._TS_2H, PUB1_ID, "markov_v1", Decimal("0.30")),
+        ]
+
+        repo.bulk_insert(tuples)
+
+        count = (
+            db_session.query(ModelLogs)
+            .filter(
+                ModelLogs.publisher_id == PUB1_ID,
+                ModelLogs.timestamp >= self._BASE_TS,
+                ModelLogs.timestamp <= self._TS_2H,
+            )
+            .count()
+        )
+        assert count == 3
+
+    def test_fields_stored_correctly(self, db_session, seed_data):
+        repo = ModelLogsRepository(db_session)
+        tuples = [(self._BASE_TS, PUB1_ID, "isolation_forest_v2", Decimal("0.73"))]
+
+        repo.bulk_insert(tuples)
+
+        row = (
+            db_session.query(ModelLogs)
+            .filter(
+                ModelLogs.publisher_id == PUB1_ID,
+                ModelLogs.timestamp == self._BASE_TS,
+            )
+            .one()
+        )
+        assert row.timestamp == self._BASE_TS
+        assert row.publisher_id == PUB1_ID
+        assert row.model_name == "isolation_forest_v2"
+        assert row.score == Decimal("0.73")
+
+    def test_score_boundary_zero(self, db_session, seed_data):
+        repo = ModelLogsRepository(db_session)
+        tuples = [(self._BASE_TS, PUB1_ID, "markov_v1", Decimal("0.00"))]
+
+        repo.bulk_insert(tuples)
+
+        row = (
+            db_session.query(ModelLogs)
+            .filter(
+                ModelLogs.publisher_id == PUB1_ID,
+                ModelLogs.timestamp == self._BASE_TS,
+            )
+            .one()
+        )
+        assert row.score == Decimal("0.00")
+
+    def test_score_boundary_one(self, db_session, seed_data):
+        repo = ModelLogsRepository(db_session)
+        tuples = [(self._BASE_TS, PUB1_ID, "markov_v1", Decimal("1.00"))]
+
+        repo.bulk_insert(tuples)
+
+        row = (
+            db_session.query(ModelLogs)
+            .filter(
+                ModelLogs.publisher_id == PUB1_ID,
+                ModelLogs.timestamp == self._BASE_TS,
+            )
+            .one()
+        )
+        assert row.score == Decimal("1.00")
+
+    def test_empty_list_is_noop(self, db_session, seed_data):
+        repo = ModelLogsRepository(db_session)
+
+        repo.bulk_insert([])
+
+        # Seed data has 9 model_logs rows; count should be unchanged
+        count = db_session.query(ModelLogs).count()
+        assert count == 9
