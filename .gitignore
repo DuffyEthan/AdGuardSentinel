@@ -20,7 +20,31 @@ CLAUDE.md
 # streamlit secrets
 .streamlit/secrets.toml
 
-# dbmate local env
-db/.env
+# Node / React
+node_modules/
+dist/
+build/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+venv/
+.venv/
+
+# OS
 .DS_Store
+Thumbs.db
+
+#Poetry
+.venv/
+poetry.lock

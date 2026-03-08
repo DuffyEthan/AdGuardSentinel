@@ -4,6 +4,7 @@
 
 - [Docker & Docker Compose](https://docs.docker.com/get-docker/)
 - [Python 3.10+](https://www.python.org/downloads/)
+- [Node.js & npm](https://nodejs.org/) — required for the React frontend
 - [dbmate](https://github.com/amacneil/dbmate) — database migration tool
 
 ### Installing dbmate
@@ -51,14 +52,9 @@ cp .secrets/.env.example .secrets/.env
 
 # dbmate config (for running migrations locally)
 cp db/.env.example db/.env
-
-# Streamlit secrets (for running the frontend locally)
-cp .streamlit/secrets.toml.example .streamlit/secrets.toml
 ```
 
 Edit these files if you need to change the default credentials. The defaults work out of the box for local development.
-
-> **Note:** When running the frontend locally (not via Docker), change `DB_HOST` in `.streamlit/secrets.toml` from `db` to `localhost`.
 
 ### 3. Install Python dependencies
 
@@ -70,6 +66,13 @@ or (depending on how your python is setup)
 
 ```bash
 pip3 install -r requirements.txt
+```
+
+### 3a. Install React frontend dependencies
+
+```bash
+cd app/frontend
+npm install
 ```
 
 ### 4. Start the database
@@ -111,12 +114,13 @@ This loads sample impression data into the database.
 
 ### 7. Run the app
 
-**run the Streamlit frontend directly:**
+**Run the React frontend:**
 ```bash
-streamlit run frontend/frontend.py
+cd app/frontend
+npm run dev
 ```
 
-The dashboard is available at http://localhost:8501.
+The dashboard is available at http://localhost:5173.
 
 ## Database Migrations
 
@@ -211,20 +215,57 @@ with get_session() as session:
 ## Project Structure
 
 ```
+├── .secrets/
+│   ├── .env.example             # Docker/database credentials template
+│   └── .env                     # Local credentials (not committed)
 ├── app/
 │   ├── db/
 │   │   ├── __init__.py          # SQLAlchemy engine + session factory
 │   │   ├── models.py            # Auto-generated models (sqlacodegen)
 │   │   └── session.py           # get_session() context manager
+│   ├── fastapi/
+│   │   ├── __init__.py
+│   │   └── main.py              # FastAPI app entry point
+│   ├── frontend/                # React + Vite frontend
+│   │   ├── index.html
+│   │   ├── package.json
+│   │   ├── vite.config.ts
+│   │   └── src/
+│   │       ├── App.tsx
+│   │       ├── main.tsx
+│   │       ├── components/      # Reusable UI components
+│   │       │   ├── AnomalyArea.tsx
+│   │       │   ├── Navbar.tsx
+│   │       │   ├── Sidebar.tsx
+│   │       │   └── TimeSeriesChart.tsx
+│   │       ├── context/
+│   │       │   └── ThemeContext.tsx
+│   │       └── pages/
+│   │           ├── Dashboard.tsx
+│   │           └── Home.tsx
+│   ├── legacy-frontend/         # Old Streamlit frontend (deprecated)
+│   │   └── streamlit_app.py
 │   ├── ml/
+│   │   ├── _isolation_forest.py # Isolation Forest anomaly detection
+│   │   ├── batch_data_generator.py
 │   │   └── markov.py            # Markov chain data generator
+│   ├── repositories/
+│   │   ├── base.py
+│   │   ├── model_logs_repository.py
+│   │   └── raw_metrics_repository.py
+│   ├── CTR_calculation.py
 │   └── main.py                  # App entry point
 ├── db/
 │   ├── init/
 │   │   └── 02_seed.sql          # Seed data
 │   ├── migrations/
 │   │   ├── 000100_extensions.sql
-│   │   └── 000200_create_impression.sql
+│   │   ├── 000200_create_publishers.sql
+│   │   ├── 000300_create_raw_metrics.sql
+│   │   ├── 000400_create_model_logs.sql
+│   │   ├── 000500_migrate_ids_to_uuids.sql
+│   │   ├── 000600_ml_reports.sql
+│   │   └── 000700_create_campaigns.sql
 │   ├── scripts/
 │   │   ├── generate_models.sh   # Regenerate SQLAlchemy models (macOS/Linux)
 │   │   ├── generate_models.bat  # Regenerate SQLAlchemy models (Windows)
@@ -232,11 +273,13 @@ with get_session() as session:
 │   │   └── seed.bat             # Load seed data (Windows)
 │   ├── .env.example             # dbmate environment config
 │   └── schema.sql               # Full schema dump (auto-generated)
-├── frontend/
-│   └── frontend.py              # Streamlit dashboard
 ├── tests/
+│   ├── conftest.py
+│   ├── test_model_logs_repository.py
+│   └── test_raw_metrics_repository.py
 ├── docker-compose.yml
 ├── Dockerfile
+├── Makefile
 ├── requirements.txt
 └── .gitlab-ci.yml
 ```
@@ -251,6 +294,21 @@ The GitLab CI pipeline automatically:
 4. Runs pytest — **pipeline fails if any test fails**
 
 No manual database setup is needed in CI.
+
+# Running Fast API server
+
+1. Navigate to the project directory
+2. Create environment configuration - copied from .secrets\.env.example 
+3. Copy the env file to the db folder (.\.secrets\.env .\db\.env)
+4. Start the database and FastAPI services: "docker-compose down", "docker compose build --no-cache", "docker-compose up fastapi"
+5. Verify its working, open http://localhost:8000, should see "{"Hello":"World"}"
+6. To stop the services: "docker-compose down"
+
+Current available Endpoints:
+1. GET / - Health check
+2. GET /model-logs/get-between?t1=<datetime>&t2=<datetime>&publisher_id=<id> - Get model logs
+3. GET /raw-metrics/get-last-n-before?t=<datetime>&n=<count>&publisher_id=<id> - Get metrics
+
 
 ## Contributors
 
