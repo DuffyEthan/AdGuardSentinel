@@ -4,7 +4,7 @@ from app.ml.publishers.pub_fox import pub_fox
 from app.ml.publishers.pub_owl import pub_owl
 from app.ml.publishers.pub_spy import pub_spy
 
-publisherCatalog={
+publisher_catalog={
     "cat":pub_cat,
     "dog":pub_dog,
     "fox":pub_fox,
