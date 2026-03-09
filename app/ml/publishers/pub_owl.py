@@ -23,4 +23,4 @@ bimodal = {
     }
 }
 
-pub_fox = MarkovDataGenerator.from_dict(bimodal, "normal")
+pub_owl = MarkovDataGenerator.from_dict(bimodal, "normal")
