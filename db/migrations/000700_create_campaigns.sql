@@ -1,6 +1,6 @@
 --migrate:up
 
-CREATE TABLE IF NOT EXISTS campaign(
+CREATE TABLE IF NOT EXISTS campaigns(
   campaign_id UUID PRIMARY KEY,
   publisher_id UUID NOT NULL REFERENCES publishers(publisher_id) ON DELETE CASCADE,
   start_date TIMESTAMPTZ NOT NULL,
@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS campaign(
 );
 
 ALTER TABLE raw_metrics
-    ADD COLUMN campaign_id UUID REFERENCES campaign(campaign_id) ON DELETE CASCADE;
+    ADD COLUMN campaign_id UUID REFERENCES campaigns(campaign_id) ON DELETE CASCADE;
 
 ALTER TABLE raw_metrics
     DROP CONSTRAINT raw_metrics_pkey,
@@ -24,4 +24,4 @@ ALTER TABLE raw_metrics
 ALTER TABLE raw_metrics
     DROP COLUMN campaign_id;
 
-DROP TABLE IF EXISTS campaign;
+DROP TABLE IF EXISTS campaigns;
