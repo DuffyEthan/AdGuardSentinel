@@ -59,14 +59,14 @@ class AnomalyPeriods(Base):
     __tablename__ = 'anomaly_periods'
     __table_args__ = (
         ForeignKeyConstraint(['publisher_id'], ['publishers.publisher_id'], ondelete='CASCADE', name='anomaly_periods_publisher_id_fkey'),
-        PrimaryKeyConstraint('period_id', name='anomaly_periods_pkey'),
+        PrimaryKeyConstraint('period_id', 'publisher_id', 'start_timestamp', name='anomaly_periods_pkey'),
         Index('idx_anomaly_periods_publisher', 'publisher_id', 'start_timestamp')
     )
 
     period_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, server_default=text('gen_random_uuid()'))
-    publisher_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    publisher_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
     anomaly_type: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'anomaly'::text"))
-    start_timestamp: Mapped[datetime.datetime] = mapped_column(DateTime(True), nullable=False)
+    start_timestamp: Mapped[datetime.datetime] = mapped_column(DateTime(True), primary_key=True)
     log_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text('0'))
     end_timestamp: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime(True))
     avg_score: Mapped[Optional[float]] = mapped_column(Double(53))

@@ -1,6 +1,6 @@
 -- migrate:up
 CREATE TABLE IF NOT EXISTS anomaly_periods (
-    period_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    period_id       UUID DEFAULT gen_random_uuid(),
     publisher_id    UUID NOT NULL REFERENCES publishers(publisher_id) ON DELETE CASCADE,
     anomaly_type    TEXT NOT NULL DEFAULT 'anomaly',
 
