@@ -20,9 +20,9 @@ class SentinelRepository(BaseRepository):
         latest_ts = (
             self.session.query(
                 ModelLogs.publisher_id,
-                func.max(ModelLogs.timestamp).label("max_ts"),
+                func.max(ModelLogs.log_timestamp).label("max_ts"),
             )
-            .filter(ModelLogs.timestamp >= since)
+            .filter(ModelLogs.log_timestamp >= since)
             .group_by(ModelLogs.publisher_id)
             .subquery()
         )
@@ -33,7 +33,7 @@ class SentinelRepository(BaseRepository):
                 latest_ts,
                 and_(
                     ModelLogs.publisher_id == latest_ts.c.publisher_id,
-                    ModelLogs.timestamp == latest_ts.c.max_ts,
+                    ModelLogs.log_timestamp == latest_ts.c.max_ts,
                 ),
             )
             .filter(ModelLogs.score > ANOMALY_THRESHOLD)
@@ -62,7 +62,7 @@ class SentinelRepository(BaseRepository):
             .select_from(ModelLogs)
             .filter(
                 ModelLogs.score > ANOMALY_THRESHOLD,
-                ModelLogs.timestamp >= since,
+                ModelLogs.log_timestamp >= since,
             )
             .scalar()
         )
@@ -72,7 +72,7 @@ class SentinelRepository(BaseRepository):
         latest_ts = (
             self.session.query(
                 ModelLogs.publisher_id,
-                func.max(ModelLogs.timestamp).label("max_ts"),
+                func.max(ModelLogs.log_timestamp).label("max_ts"),
             )
             .group_by(ModelLogs.publisher_id)
             .subquery()
@@ -84,7 +84,7 @@ class SentinelRepository(BaseRepository):
                 latest_ts,
                 and_(
                     ModelLogs.publisher_id == latest_ts.c.publisher_id,
-                    ModelLogs.timestamp == latest_ts.c.max_ts,
+                    ModelLogs.log_timestamp == latest_ts.c.max_ts,
                 ),
             )
             .all()
@@ -119,9 +119,9 @@ class SentinelRepository(BaseRepository):
                 self.session.query(ModelLogs)
                 .filter(
                     ModelLogs.publisher_id == pub.publisher_id,
-                    ModelLogs.timestamp <= as_of,
+                    ModelLogs.log_timestamp <= as_of,
                 )
-                .order_by(desc(ModelLogs.timestamp))
+                .order_by(desc(ModelLogs.log_timestamp))
                 .first()
             )
 
@@ -188,12 +188,12 @@ class SentinelRepository(BaseRepository):
 
     def get_last_alert_timestamp(self, publisher_id: uuid.UUID) -> Optional[datetime]:
         row = (
-            self.session.query(ModelLogs.timestamp)
+            self.session.query(ModelLogs.log_timestamp)
             .filter(
                 ModelLogs.publisher_id == publisher_id,
                 ModelLogs.score > ANOMALY_THRESHOLD,
             )
-            .order_by(desc(ModelLogs.timestamp))
+            .order_by(desc(ModelLogs.log_timestamp))
             .first()
         )
         return row[0] if row else None
@@ -204,9 +204,9 @@ class SentinelRepository(BaseRepository):
         latest_ts = (
             self.session.query(
                 ModelLogs.publisher_id,
-                func.max(ModelLogs.timestamp).label("max_ts"),
+                func.max(ModelLogs.log_timestamp).label("max_ts"),
             )
-            .filter(ModelLogs.timestamp <= as_of)
+            .filter(ModelLogs.log_timestamp <= as_of)
             .group_by(ModelLogs.publisher_id)
             .subquery()
         )
@@ -217,7 +217,7 @@ class SentinelRepository(BaseRepository):
                 latest_ts,
                 and_(
                     ModelLogs.publisher_id == latest_ts.c.publisher_id,
-                    ModelLogs.timestamp == latest_ts.c.max_ts,
+                    ModelLogs.log_timestamp == latest_ts.c.max_ts,
                 ),
             )
             .all()
@@ -254,7 +254,7 @@ class SentinelRepository(BaseRepository):
     def get_daily_fraud_event_counts(self, days: int = 7) -> list[dict]:
         cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
-        day_col = func.date_trunc("day", ModelLogs.timestamp).label("day")
+        day_col = func.date_trunc("day", ModelLogs.log_timestamp).label("day")
         rows = (
             self.session.query(
                 day_col,
@@ -262,7 +262,7 @@ class SentinelRepository(BaseRepository):
             )
             .filter(
                 ModelLogs.score > ANOMALY_THRESHOLD,
-                ModelLogs.timestamp >= cutoff,
+                ModelLogs.log_timestamp >= cutoff,
             )
             .group_by(day_col)
             .order_by(day_col.asc())
@@ -297,24 +297,24 @@ class SentinelRepository(BaseRepository):
                 RawMetrics,
                 and_(
                     ModelLogs.publisher_id == RawMetrics.publisher_id,
-                    func.date_trunc("hour", ModelLogs.timestamp)
+                    func.date_trunc("hour", ModelLogs.log_timestamp)
                     == func.date_trunc("hour", RawMetrics.bucket_timestamp),
                 ),
             )
             .filter(
                 ModelLogs.publisher_id == publisher_id,
                 ModelLogs.score > ANOMALY_THRESHOLD,
-                ModelLogs.timestamp >= t1,
-                ModelLogs.timestamp <= t2,
+                ModelLogs.log_timestamp >= t1,
+                ModelLogs.log_timestamp <= t2,
             )
-            .order_by(asc(ModelLogs.timestamp))
+            .order_by(asc(ModelLogs.log_timestamp))
             .all()
         )
 
         result = []
         seen_timestamps = set()
         for log, raw in rows:
-            ts_key = log.timestamp
+            ts_key = log.log_timestamp
             if ts_key in seen_timestamps:
                 continue
             seen_timestamps.add(ts_key)
@@ -328,7 +328,7 @@ class SentinelRepository(BaseRepository):
 
             result.append(
                 {
-                    "timestamp": log.timestamp,
+                    "timestamp": log.log_timestamp,
                     "anomaly_score": float(log.score),
                     "ctr": ctr,
                     "cvr": cvr,

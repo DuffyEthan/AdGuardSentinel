@@ -25,20 +25,20 @@ class ModelLogsRepository(BaseRepository):
             .filter(
                 ModelLogs.publisher_id == publisher_id,
                 RawMetrics.campaign_id == campaign_id,
-                ModelLogs.timestamp >= t1,
-                ModelLogs.timestamp <= t2,
+                ModelLogs.log_timestamp >= t1,
+                ModelLogs.log_timestamp <= t2,
                 RawMetrics.bucket_timestamp >= t1,
                 RawMetrics.bucket_timestamp <= t2,
             )
         )
 
-        return query.order_by(asc(ModelLogs.timestamp)).all()
+        return query.order_by(asc(ModelLogs.log_timestamp)).all()
 
     def bulk_insert(self, tuples: list[tuple]) -> None: # Insert model log rows from a list of (timestamp, publisher_id, model_name, score) tuples.
         if not tuples:
             return
 
-        keys = ("timestamp", "publisher_id", "model_name", "score")
+        keys = ("log_timestamp", "publisher_id", "model_name", "score")
         recs = [dict(zip(keys, t)) for t in tuples]
 
         self.session.bulk_insert_mappings(ModelLogs, recs)
