@@ -30,6 +30,7 @@ cache:
 .python-base:
   image: python:3.11
   before_script:
+    - pip install --upgrade pip
     - pip install "poetry==$POETRY_VERSION"
     - poetry config virtualenvs.create false
     - pip install uv

@@ -1,4 +1,4 @@
-fastapi[standard]>=0.113.0,<0.114.0 ; python_version >= "3.11"
+fastapi[standard]>=0.115.0 ; python_version >= "3.11"
 uvicorn[standard] ; python_version >= "3.11"
 scikit-learn ; python_version >= "3.11"
 psycopg2-binary ; python_version >= "3.11"
