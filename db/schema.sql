@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict UUFlvF6TM5gE2WTK0BOYKWcKT1ElEaH7hAgODd42ELtAWWpmBEWbM6YjHZaCL3T
+\restrict ARf5fPGyDgyXN7JqWdYvwmbJI7vstTr6jhi9unY5jY3SuBE4h2D8UvtXhM6TKeY
 
 -- Dumped from database version 16.11
 -- Dumped by pg_dump version 16.11
@@ -67,18 +67,6 @@ CREATE TABLE public.anomaly_periods (
 
 
 --
--- Name: campaign; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.campaign (
-    campaign_id uuid NOT NULL,
-    publisher_id uuid NOT NULL,
-    start_date timestamp with time zone NOT NULL,
-    end_date timestamp with time zone
-);
-
-
---
 -- Name: campaigns; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -108,18 +96,6 @@ CREATE TABLE public.derived_metrics (
     clicks_weighted_mean double precision,
     conversions_weighted_mean double precision,
     sample_size integer DEFAULT 250 NOT NULL
-);
-
-
---
--- Name: ml_reports; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.ml_reports (
-    model_run_id uuid NOT NULL,
-    publisher_id uuid NOT NULL,
-    report_timestamp timestamp with time zone NOT NULL,
-    report_data jsonb
 );
 
 
@@ -196,15 +172,7 @@ CREATE TABLE public.schema_migrations (
 --
 
 ALTER TABLE ONLY public.anomaly_periods
-    ADD CONSTRAINT anomaly_periods_pkey PRIMARY KEY (period_id);
-
-
---
--- Name: campaign campaign_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.campaign
-    ADD CONSTRAINT campaign_pkey PRIMARY KEY (campaign_id);
+    ADD CONSTRAINT anomaly_periods_pkey PRIMARY KEY (period_id, publisher_id, start_timestamp);
 
 
 --
@@ -221,14 +189,6 @@ ALTER TABLE ONLY public.campaigns
 
 ALTER TABLE ONLY public.derived_metrics
     ADD CONSTRAINT derived_metrics_pkey PRIMARY KEY (publisher_id, bucket_timestamp, campaign_id);
-
-
---
--- Name: ml_reports ml_reports_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.ml_reports
-    ADD CONSTRAINT ml_reports_pkey PRIMARY KEY (model_run_id, publisher_id, report_timestamp);
 
 
 --
@@ -280,17 +240,17 @@ ALTER TABLE ONLY public.schema_migrations
 
 
 --
+-- Name: anomaly_periods_start_timestamp_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX anomaly_periods_start_timestamp_idx ON public.anomaly_periods USING btree (start_timestamp DESC);
+
+
+--
 -- Name: derived_metrics_bucket_timestamp_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX derived_metrics_bucket_timestamp_idx ON public.derived_metrics USING btree (bucket_timestamp DESC);
-
-
---
--- Name: idx_anomaly_periods_publisher; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_anomaly_periods_publisher ON public.anomaly_periods USING btree (publisher_id, start_timestamp);
 
 
 --
@@ -316,14 +276,6 @@ ALTER TABLE ONLY public.anomaly_periods
 
 
 --
--- Name: campaign campaign_publisher_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.campaign
-    ADD CONSTRAINT campaign_publisher_id_fkey FOREIGN KEY (publisher_id) REFERENCES public.publishers(publisher_id) ON DELETE CASCADE;
-
-
---
 -- Name: campaigns campaigns_publisher_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -345,22 +297,6 @@ ALTER TABLE ONLY public.derived_metrics
 
 ALTER TABLE ONLY public.derived_metrics
     ADD CONSTRAINT derived_metrics_publisher_id_fkey FOREIGN KEY (publisher_id) REFERENCES public.publishers(publisher_id) ON DELETE CASCADE;
-
-
---
--- Name: ml_reports ml_reports_model_run_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.ml_reports
-    ADD CONSTRAINT ml_reports_model_run_id_fkey FOREIGN KEY (model_run_id) REFERENCES public.model_runs(model_run_id) ON DELETE CASCADE;
-
-
---
--- Name: ml_reports ml_reports_publisher_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.ml_reports
-    ADD CONSTRAINT ml_reports_publisher_id_fkey FOREIGN KEY (publisher_id) REFERENCES public.publishers(publisher_id) ON DELETE CASCADE;
 
 
 --
@@ -407,5 +343,5 @@ ALTER TABLE ONLY public.raw_metrics
 -- PostgreSQL database dump complete
 --
 
-\unrestrict UUFlvF6TM5gE2WTK0BOYKWcKT1ElEaH7hAgODd42ELtAWWpmBEWbM6YjHZaCL3T
+\unrestrict ARf5fPGyDgyXN7JqWdYvwmbJI7vstTr6jhi9unY5jY3SuBE4h2D8UvtXhM6TKeY
 

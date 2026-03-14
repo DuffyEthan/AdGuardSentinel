@@ -56,14 +56,15 @@ echo Models written to %OUTFILE%
 :: Dump schema.sql from the running TimescaleDB container
 set "SCHEMA_FILE=%DB_DIR%\schema.sql"
 
-:: Extract database name from DATABASE_URL (everything after the last /)
-for %%A in ("%DATABASE_URL%") do set "DB_URL_STR=%%~A"
-:: Remove query parameters if any
-for /f "tokens=1 delims=?" %%B in ("!DB_URL_STR!") do set "DB_URL_CLEAN=%%B"
-:: Get the last segment after /
-for %%C in ("!DB_URL_CLEAN:/=" "!") do set "DB_NAME=%%~C"
+:: Extract database name from DATABASE_URL robustly via PowerShell URI parsing.
+for /f "usebackq delims=" %%D in (`powershell -NoProfile -Command "$u=[System.Uri]::new('%DATABASE_URL%'); $db=$u.AbsolutePath.TrimStart('/'); if([string]::IsNullOrWhiteSpace($db)){ exit 1 }; Write-Output $db"`) do set "DB_NAME=%%D"
 
-echo Dumping schema to: %SCHEMA_FILE%
+if not defined DB_NAME (
+    echo ERROR: Could not parse DB name from DATABASE_URL: %DATABASE_URL%
+    exit /b 1
+)
+
+echo Dumping schema for database "%DB_NAME%" to: %SCHEMA_FILE%
 docker compose exec -T db pg_dump --schema-only --no-owner --no-privileges -U postgres "!DB_NAME!" > "%SCHEMA_FILE%"
 if errorlevel 1 (
     echo ERROR: Failed to dump schema.

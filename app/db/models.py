@@ -23,7 +23,6 @@ class ModelRuns(Base):
     model_run_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
     model_name: Mapped[str] = mapped_column(Text, nullable=False)
 
-    ml_reports: Mapped[list['MlReports']] = relationship('MlReports', back_populates='model_run')
     model_reports: Mapped[list['ModelReports']] = relationship('ModelReports', back_populates='model_run')
 
 
@@ -37,9 +36,7 @@ class Publishers(Base):
     publisher_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
 
     anomaly_periods: Mapped[list['AnomalyPeriods']] = relationship('AnomalyPeriods', back_populates='publisher')
-    campaign: Mapped[list['Campaign']] = relationship('Campaign', back_populates='publisher')
     campaigns: Mapped[list['Campaigns']] = relationship('Campaigns', back_populates='publisher')
-    ml_reports: Mapped[list['MlReports']] = relationship('MlReports', back_populates='publisher')
     model_logs: Mapped[list['ModelLogs']] = relationship('ModelLogs', back_populates='publisher')
     model_reports: Mapped[list['ModelReports']] = relationship('ModelReports', back_populates='publisher')
     derived_metrics: Mapped[list['DerivedMetrics']] = relationship('DerivedMetrics', back_populates='publisher')
@@ -60,7 +57,7 @@ class AnomalyPeriods(Base):
     __table_args__ = (
         ForeignKeyConstraint(['publisher_id'], ['publishers.publisher_id'], ondelete='CASCADE', name='anomaly_periods_publisher_id_fkey'),
         PrimaryKeyConstraint('period_id', 'publisher_id', 'start_timestamp', name='anomaly_periods_pkey'),
-        Index('idx_anomaly_periods_publisher', 'publisher_id', 'start_timestamp')
+        Index('anomaly_periods_start_timestamp_idx', 'start_timestamp')
     )
 
     period_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, server_default=text('gen_random_uuid()'))
@@ -73,21 +70,6 @@ class AnomalyPeriods(Base):
     max_score: Mapped[Optional[float]] = mapped_column(Double(53))
 
     publisher: Mapped['Publishers'] = relationship('Publishers', back_populates='anomaly_periods')
-
-
-class Campaign(Base):
-    __tablename__ = 'campaign'
-    __table_args__ = (
-        ForeignKeyConstraint(['publisher_id'], ['publishers.publisher_id'], ondelete='CASCADE', name='campaign_publisher_id_fkey'),
-        PrimaryKeyConstraint('campaign_id', name='campaign_pkey')
-    )
-
-    campaign_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
-    publisher_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
-    start_date: Mapped[datetime.datetime] = mapped_column(DateTime(True), nullable=False)
-    end_date: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime(True))
-
-    publisher: Mapped['Publishers'] = relationship('Publishers', back_populates='campaign')
 
 
 class Campaigns(Base):
@@ -105,23 +87,6 @@ class Campaigns(Base):
     publisher: Mapped['Publishers'] = relationship('Publishers', back_populates='campaigns')
     derived_metrics: Mapped[list['DerivedMetrics']] = relationship('DerivedMetrics', back_populates='campaign')
     raw_metrics: Mapped[list['RawMetrics']] = relationship('RawMetrics', back_populates='campaign')
-
-
-class MlReports(Base):
-    __tablename__ = 'ml_reports'
-    __table_args__ = (
-        ForeignKeyConstraint(['model_run_id'], ['model_runs.model_run_id'], ondelete='CASCADE', name='ml_reports_model_run_id_fkey'),
-        ForeignKeyConstraint(['publisher_id'], ['publishers.publisher_id'], ondelete='CASCADE', name='ml_reports_publisher_id_fkey'),
-        PrimaryKeyConstraint('model_run_id', 'publisher_id', 'report_timestamp', name='ml_reports_pkey')
-    )
-
-    model_run_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
-    publisher_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
-    report_timestamp: Mapped[datetime.datetime] = mapped_column(DateTime(True), primary_key=True)
-    report_data: Mapped[Optional[dict]] = mapped_column(JSONB)
-
-    model_run: Mapped['ModelRuns'] = relationship('ModelRuns', back_populates='ml_reports')
-    publisher: Mapped['Publishers'] = relationship('Publishers', back_populates='ml_reports')
 
 
 class ModelLogs(Base):
