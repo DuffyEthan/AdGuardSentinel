@@ -206,28 +206,31 @@ def sentinel_compare(
 @app.get("/anomaly-periods/{publisher_id}")
 def get_anomaly_periods(
     publisher_id: uuid.UUID,
+    campaign_id: uuid.UUID,
     t1: datetime,
     t2: datetime,
     session: Session = Depends(get_session),
 ):
     """Return anomaly periods overlapping [t1, t2], formatted for the chart."""
     return anomaly_periods_service.get_anomaly_periods_for_chart(
-        session, publisher_id, t1, t2
+        session, publisher_id, campaign_id, t1, t2
     )
 
 
 @app.post("/anomaly-periods/backfill/{publisher_id}")
 def backfill_anomaly_periods(
     publisher_id: uuid.UUID,
+    campaign_id: uuid.UUID,
     since: datetime | None = None,
     session: Session = Depends(get_session),
 ):
     """Re-compute all anomaly periods from model_logs for a publisher."""
     periods = anomaly_periods_service.backfill_anomaly_periods(
-        session, publisher_id, since
+        session, publisher_id, campaign_id, since
     )
     return {
         "publisher_id": str(publisher_id),
+        "campaign_id": str(campaign_id),
         "periods_created": len(periods),
         "periods": [
             {

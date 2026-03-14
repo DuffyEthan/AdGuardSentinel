@@ -264,7 +264,7 @@ with get_session() as session:
 │   │   ├── 000300_create_raw_metrics.sql
 │   │   ├── 000400_create_model_logs.sql
 │   │   ├── 000500_migrate_ids_to_uuids.sql
-│   │   ├── 000600_ml_reports.sql
+│   │   ├── 000600_model_reports.sql
 │   │   └── 000700_create_campaigns.sql
 │   ├── scripts/
 │   │   ├── generate_models.sh   # Regenerate SQLAlchemy models (macOS/Linux)

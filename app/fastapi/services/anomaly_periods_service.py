@@ -29,7 +29,7 @@ from typing import Optional
 from sqlalchemy import asc
 from sqlalchemy.orm import Session
 
-from app.db.models import AnomalyPeriods, ModelLogs
+from app.db.models import AnomalyPeriods, ModelLogs, RawMetrics
 from app.repositories.anomaly_periods_repository import AnomalyPeriodsRepository
 
 # ── Thresholds ──────────────────────────────────────────────────────────
@@ -51,6 +51,7 @@ def classify_score(score: float) -> Optional[str]:
 def process_new_log(
     session: Session,
     publisher_id: uuid.UUID,
+    campaign_id: uuid.UUID,
     timestamp: datetime,
     score: float,
 ) -> Optional[AnomalyPeriods]:
@@ -68,7 +69,7 @@ def process_new_log(
     """
     repo = AnomalyPeriodsRepository(session)
     anomaly_type = classify_score(score)
-    open_period = repo.get_open_period(publisher_id)
+    open_period = repo.get_open_period(publisher_id, campaign_id)
 
     if anomaly_type is None:
         # ── Score is normal → close any open period ─────────────────
@@ -81,6 +82,7 @@ def process_new_log(
         # No open period → start a new one
         return repo.open_period(
             publisher_id=publisher_id,
+            campaign_id=campaign_id,
             start_timestamp=timestamp,
             anomaly_type=anomaly_type,
             score=score,
@@ -95,6 +97,7 @@ def process_new_log(
     repo.close_period(open_period, end_timestamp=timestamp)
     return repo.open_period(
         publisher_id=publisher_id,
+        campaign_id=campaign_id,
         start_timestamp=timestamp,
         anomaly_type=anomaly_type,
         score=score,
@@ -106,6 +109,7 @@ def process_new_log(
 def backfill_anomaly_periods(
     session: Session,
     publisher_id: uuid.UUID,
+    campaign_id: uuid.UUID,
     since: Optional[datetime] = None,
 ) -> list[AnomalyPeriods]:
     """Re-compute anomaly periods from scratch for a publisher.
@@ -119,7 +123,7 @@ def backfill_anomaly_periods(
     repo = AnomalyPeriodsRepository(session)
 
     # Delete existing periods for this publisher
-    existing = repo.get_all_periods(publisher_id)
+    existing = repo.get_all_periods(publisher_id, campaign_id)
     for p in existing:
         session.delete(p)
     session.flush()
@@ -127,7 +131,15 @@ def backfill_anomaly_periods(
     # Fetch model_logs ordered chronologically
     query = (
         session.query(ModelLogs)
-        .filter(ModelLogs.publisher_id == publisher_id)
+        .join(
+            RawMetrics,
+            (ModelLogs.publisher_id == RawMetrics.publisher_id)
+            & (ModelLogs.log_timestamp == RawMetrics.bucket_timestamp),
+        )
+        .filter(
+            ModelLogs.publisher_id == publisher_id,
+            RawMetrics.campaign_id == campaign_id,
+        )
     )
     if since is not None:
         query = query.filter(ModelLogs.log_timestamp >= since)
@@ -139,6 +151,7 @@ def backfill_anomaly_periods(
         result = process_new_log(
             session=session,
             publisher_id=publisher_id,
+            campaign_id=campaign_id,
             timestamp=log.log_timestamp,
             score=float(log.score),
         )
@@ -153,6 +166,7 @@ def backfill_anomaly_periods(
 def get_anomaly_periods_for_chart(
     session: Session,
     publisher_id: uuid.UUID,
+    campaign_id: uuid.UUID,
     t1: datetime,
     t2: datetime,
 ) -> list[dict]:
@@ -162,7 +176,7 @@ def get_anomaly_periods_for_chart(
     Open periods (``end_timestamp IS NULL``) use *t2* as their visual end.
     """
     repo = AnomalyPeriodsRepository(session)
-    periods = repo.get_periods_between(publisher_id, t1, t2)
+    periods = repo.get_periods_between(publisher_id, campaign_id, t1, t2)
 
     FILL_MAP = {
         "critical": "rgba(255, 0, 0, 0.15)",
@@ -185,6 +199,7 @@ def get_anomaly_periods_for_chart(
         result.append({
             "period_id": str(p.period_id),
             "publisher_id": str(p.publisher_id),
+            "campaign_id": str(p.campaign_id),
             "x1": p.start_timestamp.isoformat(),
             "x2": end.isoformat(),
             "start_timestamp": p.start_timestamp.isoformat(),

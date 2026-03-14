@@ -17,12 +17,14 @@ class AnomalyPeriodsRepository(BaseRepository):
     def get_open_period(
         self,
         publisher_id: uuid.UUID,
+        campaign_id: uuid.UUID,
     ) -> Optional[AnomalyPeriods]:
         """Return the currently-open anomaly period (end_timestamp IS NULL)."""
         return (
             self.session.query(AnomalyPeriods)
             .filter(
                 AnomalyPeriods.publisher_id == publisher_id,
+                AnomalyPeriods.campaign_id == campaign_id,
                 AnomalyPeriods.end_timestamp.is_(None),
             )
             .order_by(desc(AnomalyPeriods.start_timestamp))
@@ -32,6 +34,7 @@ class AnomalyPeriodsRepository(BaseRepository):
     def get_periods_between(
         self,
         publisher_id: uuid.UUID,
+        campaign_id: uuid.UUID,
         t1: datetime,
         t2: datetime,
     ) -> list[AnomalyPeriods]:
@@ -40,6 +43,7 @@ class AnomalyPeriodsRepository(BaseRepository):
             self.session.query(AnomalyPeriods)
             .filter(
                 AnomalyPeriods.publisher_id == publisher_id,
+                AnomalyPeriods.campaign_id == campaign_id,
                 AnomalyPeriods.start_timestamp <= t2,
                 # open periods (end_timestamp IS NULL) or periods ending after t1
                 (AnomalyPeriods.end_timestamp >= t1)
@@ -52,11 +56,15 @@ class AnomalyPeriodsRepository(BaseRepository):
     def get_all_periods(
         self,
         publisher_id: uuid.UUID,
+        campaign_id: uuid.UUID,
     ) -> list[AnomalyPeriods]:
         """Return every anomaly period for a publisher, oldest first."""
         return (
             self.session.query(AnomalyPeriods)
-            .filter(AnomalyPeriods.publisher_id == publisher_id)
+            .filter(
+                AnomalyPeriods.publisher_id == publisher_id,
+                AnomalyPeriods.campaign_id == campaign_id,
+            )
             .order_by(asc(AnomalyPeriods.start_timestamp))
             .all()
         )
@@ -66,6 +74,7 @@ class AnomalyPeriodsRepository(BaseRepository):
     def open_period(
         self,
         publisher_id: uuid.UUID,
+        campaign_id: uuid.UUID,
         start_timestamp: datetime,
         anomaly_type: str = "anomaly",
         score: float = 0.0,
@@ -74,6 +83,7 @@ class AnomalyPeriodsRepository(BaseRepository):
         period = AnomalyPeriods(
             period_id=uuid.uuid4(),
             publisher_id=publisher_id,
+            campaign_id=campaign_id,
             anomaly_type=anomaly_type,
             start_timestamp=start_timestamp,
             end_timestamp=None,
@@ -118,6 +128,7 @@ class AnomalyPeriodsRepository(BaseRepository):
         stmt = insert(AnomalyPeriods).values(
             period_id=period.period_id,
             publisher_id=period.publisher_id,
+            campaign_id=period.campaign_id,
             anomaly_type=period.anomaly_type,
             start_timestamp=period.start_timestamp,
             end_timestamp=period.end_timestamp,

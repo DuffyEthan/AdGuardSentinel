@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict ARf5fPGyDgyXN7JqWdYvwmbJI7vstTr6jhi9unY5jY3SuBE4h2D8UvtXhM6TKeY
+\restrict yklRxA0vMUqfPvnBTk0MPT3OlozXgVIMe3Hg3sPJL08rtXsZYuzcpa3ZFh9qQ5o
 
 -- Dumped from database version 16.11
 -- Dumped by pg_dump version 16.11
@@ -57,6 +57,7 @@ SET default_table_access_method = heap;
 CREATE TABLE public.anomaly_periods (
     period_id uuid DEFAULT gen_random_uuid() NOT NULL,
     publisher_id uuid NOT NULL,
+    campaign_id uuid NOT NULL,
     anomaly_type text DEFAULT 'anomaly'::text NOT NULL,
     start_timestamp timestamp with time zone NOT NULL,
     end_timestamp timestamp with time zone,
@@ -120,7 +121,8 @@ CREATE TABLE public.model_reports (
     model_run_id uuid NOT NULL,
     publisher_id uuid NOT NULL,
     report_timestamp timestamp with time zone NOT NULL,
-    report_data jsonb
+    report_data jsonb,
+    campaign_id uuid NOT NULL
 );
 
 
@@ -172,7 +174,7 @@ CREATE TABLE public.schema_migrations (
 --
 
 ALTER TABLE ONLY public.anomaly_periods
-    ADD CONSTRAINT anomaly_periods_pkey PRIMARY KEY (period_id, publisher_id, start_timestamp);
+    ADD CONSTRAINT anomaly_periods_pkey PRIMARY KEY (period_id, publisher_id, campaign_id, start_timestamp);
 
 
 --
@@ -204,7 +206,7 @@ ALTER TABLE ONLY public.model_logs
 --
 
 ALTER TABLE ONLY public.model_reports
-    ADD CONSTRAINT model_reports_pkey PRIMARY KEY (model_run_id, publisher_id, report_timestamp);
+    ADD CONSTRAINT model_reports_pkey PRIMARY KEY (model_run_id, publisher_id, campaign_id, report_timestamp);
 
 
 --
@@ -268,6 +270,14 @@ CREATE INDEX raw_metrics_bucket_timestamp_idx ON public.raw_metrics USING btree 
 
 
 --
+-- Name: anomaly_periods anomaly_periods_campaign_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.anomaly_periods
+    ADD CONSTRAINT anomaly_periods_campaign_id_fkey FOREIGN KEY (campaign_id) REFERENCES public.campaigns(campaign_id) ON DELETE CASCADE;
+
+
+--
 -- Name: anomaly_periods anomaly_periods_publisher_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -308,6 +318,14 @@ ALTER TABLE ONLY public.model_logs
 
 
 --
+-- Name: model_reports model_reports_campaign_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.model_reports
+    ADD CONSTRAINT model_reports_campaign_id_fkey FOREIGN KEY (campaign_id) REFERENCES public.campaigns(campaign_id) ON DELETE CASCADE;
+
+
+--
 -- Name: model_reports model_reports_model_run_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -343,5 +361,5 @@ ALTER TABLE ONLY public.raw_metrics
 -- PostgreSQL database dump complete
 --
 
-\unrestrict ARf5fPGyDgyXN7JqWdYvwmbJI7vstTr6jhi9unY5jY3SuBE4h2D8UvtXhM6TKeY
+\unrestrict yklRxA0vMUqfPvnBTk0MPT3OlozXgVIMe3Hg3sPJL08rtXsZYuzcpa3ZFh9qQ5o
 
