@@ -36,6 +36,7 @@ cache:
     - pip install uv
     - "[ -d .venv ] || python -m venv .venv"
     - source .venv/bin/activate
+    - python -m pip install --upgrade "pip>=26.0.0"
   cache:
     paths:
       - .cache/uv
@@ -62,12 +63,12 @@ dependency_check:
     - uv pip install safety
     - echo "Check for vulnerable dependencies."
     - |
-      safety check --full-report || echo "Vulnerabilities have been found, review required!"
+      safety scan --output screen || echo "Vulnerabilities have been found, review required!"
 
-      safety check --json > safety-report.json || true
+      safety scan --output json > safety-report.json || true
 
       echo "DEPENDENCY REPORT"
-      safety check --bare || echo "no issues discovered"
+      safety scan --output bare || echo "no issues discovered"
   artifacts:
     reports:
       sast: safety-report.json

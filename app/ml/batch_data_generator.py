@@ -402,9 +402,8 @@ def main() -> None:
         uuid.UUID(camp_env) if camp_env and camp_env.strip() else DEFAULT_CAMPAIGN_ID
     )
 
-    assert SessionLocal is not None, (
-        "DATABASE_URL is not configured; cannot create a session."
-    )
+    if SessionLocal is None:
+        raise RuntimeError("DATABASE_URL is not configured; cannot create a session.")
     session = SessionLocal()
     try:
         ensure_publisher_exists(session, publisher_id)
@@ -446,9 +445,8 @@ if __name__ == "__main__":
     camp_env = os.getenv("CAMPAIGN_ID")
     camp = uuid.UUID(camp_env) if camp_env and camp_env.strip() else DEFAULT_CAMPAIGN_ID
 
-    assert SessionLocal is not None, (
-        "DATABASE_URL is not configured; cannot create a session."
-    )
+    if SessionLocal is None:
+        raise RuntimeError("DATABASE_URL is not configured; cannot create a session.")
     session = SessionLocal()
     try:
         df_db = fetch_raw_metrics_from_db(
