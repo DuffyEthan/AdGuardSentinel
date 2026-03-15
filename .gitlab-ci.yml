@@ -19,6 +19,7 @@ variables:
   POETRY_VERSION: "1.8.5"
   UV_CACHE_DIR: "${CI_PROJECT_DIR}/.cache/uv"
   PIP_CACHE_DIR: "${CI_PROJECT_DIR}/.cache/pip"
+  SAST_EXCLUDED_PATHS: ".cache,.venv,app/frontend/node_modules,app/frontend/dist"
 
 cache:
   paths:
@@ -70,8 +71,6 @@ dependency_check:
       echo "DEPENDENCY REPORT"
       safety scan --output bare || echo "no issues discovered"
   artifacts:
-    reports:
-      sast: safety-report.json
     paths:
       - safety-report.json
   allow_failure: true
