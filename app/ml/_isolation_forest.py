@@ -422,8 +422,8 @@ def train_isolation_forest(df: pd.DataFrame, contamination: float = 0.05, thresh
     Train model and return predictions with trust_score and is_organic columns.
     
     """
-    # creating an instance of the AnomalyDetection (contamination, threshold) class
-    model = AnomalyDetection(contamination = contamination, threshold = threshold)
+    # creating an instance of the anomaly_detection (contamination, threshold) class
+    model = anomaly_detection(contamination = contamination, threshold = threshold)
 
     # calling model.fit(df) function - training the model on historical data
     model.fit(df)
