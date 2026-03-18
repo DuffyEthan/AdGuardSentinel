@@ -29,6 +29,21 @@ services:
     networks:
       app-network:
 
+  orchestrator:
+    build: .
+    env_file:
+      - ./.secrets/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - .:/app
+    depends_on:
+      - db
+    command: python -m app.orchestrator
+    restart: unless-stopped
+    networks:
+      app-network:
+
   app:
     build: .
     env_file:
