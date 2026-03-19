@@ -1,3 +1,29 @@
+"""
+Time-Series Data Generator
+
+Generates synthetic advertising metrics one time interval at a time
+and writes them to the raw_metrics hypertable continuously.
+
+Adds: campaign_id feature.
+
+Parameter justification:
+
+CTR and conversion assumptions derived from industry benchmarks:
+
+- WordStream (Google Ads Benchmarks):
+  https://www.wordstream.com/blog/ws/google-ads-benchmarks
+
+- HubSpot Conversion Benchmarks:
+  https://blog.hubspot.com/marketing/average-conversion-rate
+
+Typical ranges:
+- CTR: 3-6% (search), 0.5-1% (display)
+- Conversion rate: 2-10%
+
+This generator assumes ~5% CTR and ~8% conversion rate,
+which fall within published benchmark ranges.
+"""
+
 from __future__ import annotations
 
 import os
@@ -6,12 +32,10 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
+import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
-
 from dotenv import load_dotenv
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
@@ -50,6 +74,49 @@ DEFAULT_PUBLISHER_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 DEFAULT_CAMPAIGN_ID = uuid.UUID("00000000-0000-0000-0000-000000000002")
 
 
+def get_uuid_from_env(env_name: str, default: uuid.UUID) -> uuid.UUID:
+    """Return UUID from env, falling back to default if missing or invalid."""
+    value = os.getenv(env_name)
+
+    if not value or not value.strip():
+        return default
+
+    try:
+        return uuid.UUID(value.strip())
+    except (ValueError, AttributeError):
+        print(
+            f"[time_series_data_generator] Invalid {env_name}={value!r}; "
+            f"falling back to default {default}"
+        )
+        return default
+
+
+def get_bool_from_env(env_name: str, default: bool) -> bool:
+    """Parse boolean env var safely."""
+    value = os.getenv(env_name)
+    if not value or not value.strip():
+        return default
+
+    normalized = value.strip().lower()
+    return normalized in {"1", "true", "yes", "y", "on"}
+
+
+def get_int_from_env(env_name: str, default: int) -> int:
+    """Parse integer env var safely."""
+    value = os.getenv(env_name)
+    if not value or not value.strip():
+        return default
+
+    try:
+        return int(value.strip())
+    except ValueError:
+        print(
+            f"[time_series_data_generator] Invalid {env_name}={value!r}; "
+            f"falling back to default {default}"
+        )
+        return default
+
+
 def ensure_publisher_exists(
     session: Session,
     publisher_id: uuid.UUID = DEFAULT_PUBLISHER_ID,
@@ -58,7 +125,10 @@ def ensure_publisher_exists(
     existing = session.get(Publishers, publisher_id)
     if existing is None:
         session.add(
-            Publishers(publisher_id=publisher_id, publisher_name="Test Publisher")
+            Publishers(
+                publisher_id=publisher_id,
+                publisher_name="Test Publisher",
+            )
         )
         session.flush()
     return publisher_id
@@ -84,14 +154,17 @@ def ensure_campaign_exists(
 
 
 def get_aligned_start_timestamp(interval_minutes: int) -> datetime:
-    """Align the timestamp to the nearest interval boundary."""
+    """Align timestamp to the nearest interval boundary."""
     current_time = datetime.now(timezone.utc).replace(second=0, microsecond=0)
     aligned_minute = (current_time.minute // interval_minutes) * interval_minutes
     return current_time.replace(minute=aligned_minute)
 
 
-def get_next_bucket_timestamp(previous_timestamp: datetime, interval_minutes: int) -> datetime:
-    """Return the next bucket timestamp."""
+def get_next_bucket_timestamp(
+    previous_timestamp: datetime,
+    interval_minutes: int,
+) -> datetime:
+    """Return next bucket timestamp."""
     return previous_timestamp + timedelta(minutes=interval_minutes)
 
 
@@ -123,7 +196,8 @@ def build_anomaly_schedule(
     anomaly_end_index = anomaly_start_index + anomaly_window_size
     spike_multiplier = int(
         random_generator.integers(
-            config.spike_multiplier_min, config.spike_multiplier_max + 1
+            config.spike_multiplier_min,
+            config.spike_multiplier_max + 1,
         )
     )
     return anomaly_start_index, anomaly_end_index, spike_multiplier
@@ -138,7 +212,7 @@ def generate_time_series_point(
     apply_anomaly: bool = False,
     spike_multiplier: int = 1,
 ) -> pd.DataFrame:
-    """Generate one synthetic time-series row for a single interval."""
+    """Generate one synthetic row for a single interval."""
     impressions = int(random_generator.poisson(lam=config.impressions_lambda))
     clicks = int(random_generator.poisson(lam=config.clicks_lambda))
     conversions = int(random_generator.poisson(lam=config.conversions_lambda))
@@ -161,7 +235,7 @@ def generate_time_series_point(
 
 
 def upsert_raw_metrics(session: Session, data_frame: pd.DataFrame) -> int:
-    """Insert or update rows into raw_metrics (rerunnable via ON CONFLICT)."""
+    """Insert or update rows into raw_metrics."""
     rows = [
         {
             "bucket_timestamp": row.bucket_timestamp,
@@ -272,18 +346,14 @@ def plot_metrics(
     plt.show()
 
 
-# ---------------------------
-# Isolation Forest features
-# ---------------------------
-
-
 def _weighted_stats(
-    values: np.ndarray, weights: np.ndarray
+    values: np.ndarray,
+    weights: np.ndarray,
 ) -> tuple[float, float, float]:
-    """Return weighted mean, variance, std. Assumes 1D arrays, weights >= 0."""
+    """Return weighted mean, variance, std."""
     wsum = float(np.sum(weights))
     if wsum <= 0:
-        return (float("nan"), float("nan"), float("nan"))
+        return float("nan"), float("nan"), float("nan")
 
     mean = float(np.sum(weights * values) / wsum)
     var = float(np.sum(weights * (values - mean) ** 2) / wsum)
@@ -299,7 +369,7 @@ def add_isoforest_features(
     """
     Adds:
       - Weighted mean/variance/std of impressions over last `window` rows
-      - Poisson rolling rate (rolling mean impressions)
+      - Poisson rolling rate
       - Log-likelihood ratio
       - Impression->conversion rate
       - Click wastage rate
@@ -378,29 +448,11 @@ def main() -> None:
     print(f"[time_series_data_generator] seed={seed}")
     rng = np.random.default_rng(seed)
 
-    pub_env = os.getenv("PUBLISHER_ID")
-    publisher_id = (
-        uuid.UUID(pub_env) if pub_env and pub_env.strip() else DEFAULT_PUBLISHER_ID
-    )
+    publisher_id = get_uuid_from_env("PUBLISHER_ID", DEFAULT_PUBLISHER_ID)
+    campaign_id = get_uuid_from_env("CAMPAIGN_ID", DEFAULT_CAMPAIGN_ID)
 
-    camp_env = os.getenv("CAMPAIGN_ID")
-    campaign_id = (
-        uuid.UUID(camp_env) if camp_env and camp_env.strip() else DEFAULT_CAMPAIGN_ID
-    )
-
-    run_forever_env = os.getenv("RUN_FOREVER")
-    run_forever = (
-        run_forever_env.strip().lower() == "true"
-        if run_forever_env and run_forever_env.strip()
-        else config.run_forever
-    )
-
-    max_intervals_env = os.getenv("MAX_INTERVALS")
-    max_intervals = (
-        int(max_intervals_env)
-        if max_intervals_env and max_intervals_env.strip()
-        else config.max_intervals
-    )
+    run_forever = get_bool_from_env("RUN_FOREVER", config.run_forever)
+    max_intervals = get_int_from_env("MAX_INTERVALS", config.max_intervals)
 
     assert SessionLocal is not None, (
         "DATABASE_URL is not configured; cannot create a session."
@@ -413,11 +465,9 @@ def main() -> None:
         session.commit()
     except Exception:
         session.rollback()
-        session.close()
         raise
     finally:
-        if session.is_active:
-            session.close()
+        session.close()
 
     start_timestamp = get_aligned_start_timestamp(config.interval_minutes)
     print(
@@ -450,7 +500,6 @@ def main() -> None:
                 print(f"Completed {max_intervals} intervals.")
                 break
 
-            # For endless mode, randomly start a fresh anomaly window sometimes
             if run_forever and interval_index % 100 == 0:
                 anomaly_start_index = interval_index + int(rng.integers(5, 30))
                 anomaly_end_index = anomaly_start_index + config.anomaly_duration_intervals
@@ -499,7 +548,8 @@ def main() -> None:
 
             interval_index += 1
             current_timestamp = get_next_bucket_timestamp(
-                current_timestamp, config.interval_minutes
+                current_timestamp,
+                config.interval_minutes,
             )
 
             if run_forever:
@@ -512,24 +562,25 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
-    pub_env = os.getenv("PUBLISHER_ID")
-    pub = uuid.UUID(pub_env) if pub_env and pub_env.strip() else DEFAULT_PUBLISHER_ID
-
-    camp_env = os.getenv("CAMPAIGN_ID")
-    camp = uuid.UUID(camp_env) if camp_env and camp_env.strip() else DEFAULT_CAMPAIGN_ID
+    publisher_id = get_uuid_from_env("PUBLISHER_ID", DEFAULT_PUBLISHER_ID)
+    campaign_id = get_uuid_from_env("CAMPAIGN_ID", DEFAULT_CAMPAIGN_ID)
 
     assert SessionLocal is not None, (
         "DATABASE_URL is not configured; cannot create a session."
     )
+
     session = SessionLocal()
     try:
         df_db = fetch_raw_metrics_from_db(
-            session, publisher_id=pub, campaign_id=camp, limit=1000
+            session,
+            publisher_id=publisher_id,
+            campaign_id=campaign_id,
+            limit=1000,
         )
     finally:
         session.close()
 
-    plot_metrics(df_db, publisher_id=pub, campaign_id=camp)
+    plot_metrics(df_db, publisher_id=publisher_id, campaign_id=campaign_id)
 
     if not df_db.empty:
         features_df = add_isoforest_features(df_db, window=250)
