@@ -99,20 +99,28 @@ def log_results_to_db(predictions, model_name="isolation_forest_v1"):
     # preparing data for insertion and converting DataFrame to list of tuples
     records = []
     for _, row in predictions.iterrows():
+        # get fraud type (if column exists, otherwise default to 'unknown')
+        fraud_type = row.get('primary_fraud_type', 'unknown')
+        
         records.append((
             row['bucket_timestamp'],
             int(row['publisher_id']),
             model_name,
-            float(row['trust_score'])
+            float(row['trust_score']),
+            fraud_type  # Add fraud type to log
         ))
     
     # inserting into model_logs table
     insert_query = """
-        INSERT INTO model_logs (log_timestamp, publisher_id, model_name, score)
-        VALUES (%s, %s, %s, %s)
+        INSERT INTO model_logs (log_timestamp, publisher_id, model_name, score, fraud_type)
+        VALUES (%s, %s, %s, %s, %s)
         ON CONFLICT (publisher_id, log_timestamp) 
-        DO UPDATE SET score = EXCLUDED.score, model_name = EXCLUDED.model_name
+        DO UPDATE SET 
+            score = EXCLUDED.score,
+            model_name = EXCLUDED.model_name,
+            fraud_type = EXCLUDED.fraud_type
     """
+    
     
     # executing batch insert
     cur.executemany(insert_query, records)
@@ -164,10 +172,58 @@ def compute_features(df):
     features['impression_rolling_mean'] = features['impression_count'].rolling(window=5, min_periods=1).mean()
     features['impression_ratio'] = np.where(features['impression_rolling_mean'] > 0, features['impression_count'] / features['impression_rolling_mean'], 1.0)
     
+
+    # IMPRESSION FRAUD FEATURES:
+
+    # change in impressions between consecutive hours
+    features['impression_velocity'] = features['impression_count'].diff().fillna(0)
+    
+    # current impressions compared to 5 hour rolling average
+    features['impression_spike_ratio'] = np.where(
+        features['impression_rolling_mean'] > 0,
+        features['impression_count'] / features['impression_rolling_mean'],
+        1.0
+    )
+    
+    # standard deviation of impressions over 24h, measures traffic stability
+    features['impression_volatility'] = features['impression_count'].rolling(
+        window=24,
+        min_periods=1
+    ).std().fillna(0)
+    
+    # flag for impressions exceeding 10x the rolling average
+    features['abnormal_volume'] = np.where(
+        features['impression_count'] > features['impression_rolling_mean'] * 10,
+        1,
+        0
+    )
+
+    # CLICK INJECTION FRAUD:
+
+    # current conversion rate compared to 5-hour rolling average
+    features['cvr_spike_ratio'] = np.where(
+        features['cvr'].rolling(window=5, min_periods=1).mean() > 0,
+        features['cvr'] / features['cvr'].rolling(window=5, min_periods=1).mean(),
+        1.0
+    )
+    
+    # flag for conversions exceeding 3x the weekly average
+    features['suspicious_cvr'] = np.where(
+        features['cvr'] > features['cvr'].rolling(window=168, min_periods=1).mean() * 3,
+        1,
+        0
+    )
+    
+    # proportion of daily conversions concentrated in current hour
+    features['conversion_clustering'] = (
+        features['conversion_count'].rolling(window=1).sum() /
+        features['conversion_count'].rolling(window=24, min_periods=1).sum().replace(0, 1)
+    )
+    
     return features
 
 # isolation forest anomaly detection 
-class AnomalyDetection:
+class anomaly_detection:
 
     
     def __init__(self, contamination=0.05, threshold=0.7):
@@ -192,7 +248,21 @@ class AnomalyDetection:
             'ctr_rolling_std',
             'ctr_deviation',
             'impression_count',
-            'impression_ratio'
+            'impression_ratio',
+
+            # impression fraud
+            'impression_velocity',
+            'impression_spike_ratio',
+            'impression_volatility',
+            'abnormal_flag',
+
+            # click injection fraud
+            'suspicious_avg_time',
+            'suspicious_median_time',
+            'low_time_variance',
+            'high_fast_rate',
+            'fast_conversion_ratio',
+            'time_deviation'
         ]
     
     def fit(self, df):
@@ -269,6 +339,53 @@ class AnomalyDetection:
             ))
         return logs
 
+class ctr_fraud_detection(anomaly_detection):
+    # An Isolation Forest just for the CTR fraud detection
+    
+    def __init__(self, contamination=0.05, threshold=0.7):
+        super().__init__(contamination, threshold)
+        
+        # CTR related features
+        self.feature_cols = [
+            'ctr',
+            'ctr_rolling_mean',
+            'ctr_rolling_std',
+            'ctr_deviation',
+        ]
+
+class impression_fraud_detection(anomaly_detection):
+    # An Isolation Forest just for the impression fraud detection
+
+    def __init__(self, contamination=0.05, threshold=0.7):
+        super().__init__(contamination, threshold)
+        
+        # impression-related features
+        self.feature_cols = [
+            'impression_count',
+            'impression_ratio',
+            'impression_velocity',
+            'impression_spike_ratio',
+            'impression_volatility',
+            'abnormal_volume',
+        ]
+
+
+class click_injection_detector(anomaly_detection):
+    # An isolation forest for the click injection fraud detection
+
+    # NO TIMING FEATURES, uses only CVR patterns
+
+    def __init__(self, contamination=0.05, threshold=0.7):
+        super().__init__(contamination, threshold)
+        
+        # click injection-related features (CVR-based, no timing)
+        self.feature_cols = [
+            'cvr',
+            'cvr_spike_ratio',
+            'suspicious_cvr',
+            'conversion_clustering',
+        ]
+
 
 # freezing the model
 def save_model(anomaly_detector, filepath = 'app/ml/models/_isolation_forest.joblib'):
@@ -305,8 +422,8 @@ def train_isolation_forest(df: pd.DataFrame, contamination: float = 0.05, thresh
     Train model and return predictions with trust_score and is_organic columns.
     
     """
-    # creating an instance of the AnomalyDetection (contamination, threshold) class
-    model = AnomalyDetection(contamination = contamination, threshold = threshold)
+    # creating an instance of the anomaly_detection (contamination, threshold) class
+    model = anomaly_detection(contamination = contamination, threshold = threshold)
 
     # calling model.fit(df) function - training the model on historical data
     model.fit(df)
@@ -315,6 +432,65 @@ def train_isolation_forest(df: pd.DataFrame, contamination: float = 0.05, thresh
     predictions = model.predict(df)
     return predictions
 
+def train_multiple_detection_model(
+       df: pd.DataFrame,
+    contamination: float = 0.05,
+    threshold: float = 0.7
+) -> tuple[pd.DataFrame, tuple]: 
+
+    # train seperate isolation forests, one for each fraud type
+    # Returns:
+    #   - preditions: individual fraud score and overall score
+    #   - models
+    
+    ctr_detector = ctr_fraud_detection(contamination, threshold)
+    impression_detector = impression_fraud_detection(contamination, threshold)
+    click_detector = click_injection_detector(contamination, threshold)
+    
+    # training each model
+    ctr_detector.fit(df)
+    impression_detector.fit(df)
+    click_detector.fit(df)
+    
+    # get predictions from each
+    ctr_pred = ctr_detector.predict(df)
+    imp_pred = impression_detector.predict(df)
+    click_pred = click_detector.predict(df)
+    
+    # combining into one dataframe
+    result = df.copy()
+    result['ctr_fraud_score'] = ctr_pred['trust_score']
+    result['impression_fraud_score'] = imp_pred['trust_score']
+    result['click_injection_score'] = click_pred['trust_score']
+    
+    # overall trust score = minimum of the three (worst score)
+    result['trust_score'] = result[[
+        'ctr_fraud_score',
+        'impression_fraud_score',
+        'click_injection_score'
+    ]].min(axis=1)
+    
+    # overall organic flag
+    result['is_organic'] = (result['trust_score'] >= threshold).astype(int)
+    
+    # fraud type flags (which fraud was detected)
+    result['has_ctr_fraud'] = (result['ctr_fraud_score'] < threshold).astype(int)
+    result['has_impression_fraud'] = (result['impression_fraud_score'] < threshold).astype(int)
+    result['has_click_injection'] = (result['click_injection_score'] < threshold).astype(int)
+    
+    # Determine primary fraud type (lowest score = most suspicious)
+    fraud_scores = result[['ctr_fraud_score', 'impression_fraud_score', 'click_injection_score']]
+    fraud_type_map = {0: 'ctr', 1: 'impression', 2: 'click_injection'}
+    result['primary_fraud_type'] = fraud_scores.idxmin(axis=1).map({
+        'ctr_fraud_score': 'ctr',
+        'impression_fraud_score': 'impression',
+        'click_injection_score': 'click_injection'
+    })
+    
+    # if it is organic then set fraud type to 'none'
+    result.loc[result['is_organic'] == 1, 'primary_fraud_type'] = 'none'
+    
+    return result, (ctr_detector, impression_detector, click_detector)
 
 def run_full_pipeline(
     start_date,
