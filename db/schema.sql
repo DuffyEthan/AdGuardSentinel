@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict FRCUzYrY2XvxGdI3A3rQgUZTof1ciXCPZ6jtWe4GOpXyHF5yMrTVIfkOwzph24F
+\restrict sA3qdxPkI4ZjoIG5ThfyP8VX6LXSxfHq713weyZulLzte5r9uR2SBnSptx5Krj9
 
 -- Dumped from database version 16.11
 -- Dumped by pg_dump version 16.11
@@ -107,6 +107,7 @@ CREATE TABLE public.derived_metrics (
 CREATE TABLE public.model_logs (
     log_timestamp timestamp with time zone NOT NULL,
     model_name text NOT NULL,
+    fraud_type text NOT NULL,
     score numeric(3,2) NOT NULL,
     publisher_id uuid NOT NULL,
     CONSTRAINT model_logs_score_check CHECK (((score >= (0)::numeric) AND (score <= (1)::numeric)))
@@ -361,5 +362,5 @@ ALTER TABLE ONLY public.raw_metrics
 -- PostgreSQL database dump complete
 --
 
-\unrestrict FRCUzYrY2XvxGdI3A3rQgUZTof1ciXCPZ6jtWe4GOpXyHF5yMrTVIfkOwzph24F
+\unrestrict sA3qdxPkI4ZjoIG5ThfyP8VX6LXSxfHq713weyZulLzte5r9uR2SBnSptx5Krj9
 

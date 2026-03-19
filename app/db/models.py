@@ -82,6 +82,7 @@ class ModelLogs(Base):
 
     log_timestamp: Mapped[datetime.datetime] = mapped_column(DateTime(True), primary_key=True)
     model_name: Mapped[str] = mapped_column(Text, nullable=False)
+    fraud_type: Mapped[str] = mapped_column(Text, nullable=False)
     score: Mapped[decimal.Decimal] = mapped_column(Numeric(3, 2), nullable=False)
     publisher_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
 
