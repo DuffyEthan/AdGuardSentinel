@@ -1,26 +1,30 @@
 from app.ml.markov import MarkovDataGenerator
+from datetime import datetime
+from typing import Any
+import numpy as np
 
 # taken from app.ml.markov
 
-# dummy functions that just print the current state
-def foo(_):
-    print("foo")
-    return (0,0,0,0)
+InternalState = dict[str, Any]
+DataPacket = tuple[datetime, int, int, int]
 
-def bar(_):
-    print("bar")
-    return (0,0,0,0)
 
-# dict representation of our graph with functions for each node
-bimodal = {
+def normal_behavior(settings: InternalState) -> DataPacket:
+    """Normal publisher"""
+    timestamp = settings.get('timestamp', datetime.now())
+    
+    # different values from spy publisher which has also normal behaviour
+    impressions = np.random.poisson(7500)
+    clicks = np.random.poisson(400)
+    conversions = np.random.poisson(32)
+    
+    return (timestamp, impressions, clicks, conversions)
+
+cat_graph = {
     "normal": {
-        "function": foo,
-        "edges": [("normal", 0.95), ("abnormal", 0.05)]
-    },
-    "abnormal": {
-        "function": bar,
-        "edges": [("abnormal", 0.95), ("normal", 0.05)]
+        "function": normal_behavior,
+        "edges": [(1.0, "normal")]  
     }
 }
 
-pub_cat = MarkovDataGenerator.from_dict(bimodal, "normal")
+pub_cat = MarkovDataGenerator.from_dict(cat_graph, "normal")
