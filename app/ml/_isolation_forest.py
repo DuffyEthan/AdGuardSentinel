@@ -112,9 +112,9 @@ def log_results_to_db(predictions, model_name="isolation_forest_v1"):
     
     # inserting into model_logs table
     insert_query = """
-        INSERT INTO model_logs (timestamp, publisher_id, model_name, score, fraud_type)
+        INSERT INTO model_logs (log_timestamp, publisher_id, model_name, score, fraud_type)
         VALUES (%s, %s, %s, %s, %s)
-        ON CONFLICT (publisher_id, timestamp) 
+        ON CONFLICT (publisher_id, log_timestamp) 
         DO UPDATE SET 
             score = EXCLUDED.score,
             model_name = EXCLUDED.model_name,

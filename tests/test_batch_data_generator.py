@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 import numpy as np
 import pandas as pd
 
-from app.db.models import Campaign, Publishers, RawMetrics
+from app.db.models import Campaigns, Publishers, RawMetrics
 from app.ml.batch_data_generator import (
     GeneratorConfig,
     ensure_campaign_exists,
@@ -146,14 +146,14 @@ class TestEnsureCampaignExists:
 
         assert result == _TEST_CAMP_ID
 
-        camp = db_session.get(Campaign, _TEST_CAMP_ID)
+        camp = db_session.get(Campaigns, _TEST_CAMP_ID)
         assert camp is not None
         assert camp.publisher_id == _TEST_PUB_ID
 
     def test_noop_when_campaign_already_exists(self, db_session):
         ensure_publisher_exists(db_session, _TEST_PUB_ID)
         db_session.add(
-            Campaign(
+            Campaigns(
                 campaign_id=_TEST_CAMP_ID,
                 publisher_id=_TEST_PUB_ID,
                 start_date=datetime(2025, 1, 1, tzinfo=timezone.utc),
@@ -165,7 +165,7 @@ class TestEnsureCampaignExists:
         result = ensure_campaign_exists(db_session, _TEST_CAMP_ID, _TEST_PUB_ID)
 
         assert result == _TEST_CAMP_ID
-        camp = db_session.get(Campaign, _TEST_CAMP_ID)
+        camp = db_session.get(Campaigns, _TEST_CAMP_ID)
         # Original start_date should be preserved (not overwritten)
         assert camp.start_date.year == 2025
 

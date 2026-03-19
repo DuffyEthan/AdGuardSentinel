@@ -30,10 +30,16 @@ const CAMPAIGNS: Campaign[] = [
 
 // --- RNG utilities ---
 
+function secureRandom(): number {
+  const bytes = new Uint32Array(1);
+  globalThis.crypto.getRandomValues(bytes);
+  return bytes[0] / 0x100000000;
+}
+
 function normalSample(mean: number, stddev: number): number {
   // Box-Muller transform
-  const u1 = Math.random();
-  const u2 = Math.random();
+  const u1 = Math.max(secureRandom(), Number.EPSILON);
+  const u2 = secureRandom();
   const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
   return mean + stddev * z;
 }
@@ -45,13 +51,13 @@ function poissonSample(lambda: number): number {
   let p = 1;
   do {
     k++;
-    p *= Math.random();
+    p *= secureRandom();
   } while (p > L);
   return k - 1;
 }
 
 function uniform(min: number, max: number): number {
-  return min + Math.random() * (max - min);
+  return min + secureRandom() * (max - min);
 }
 
 // --- State machine data generation ---
@@ -89,7 +95,7 @@ function generatePublisherData(steps = 100): PublisherData {
     let conversions = convPct  * clicks;
 
     if (state === 'abnormal') {
-      const choice = Math.floor(Math.random() * 3);
+      const choice = Math.floor(secureRandom() * 3);
       if (choice === 0) {
         // Impressions spike
         impressions *= uniform(1.25, 2);
@@ -111,11 +117,11 @@ function generatePublisherData(steps = 100): PublisherData {
 
     // State transition
     if (state === 'normal') {
-      if (Math.random() < 0.1) {
+      if (secureRandom() < 0.1) {
         state = 'abnormal';
       }
     } else {
-      if (Math.random() < 0.5) {
+      if (secureRandom() < 0.5) {
         // Close the current anomaly period
         anomalies.push({ x1: anomalyStart!, x2: i });
         anomalyStart = null;

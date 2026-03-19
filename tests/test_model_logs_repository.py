@@ -27,7 +27,7 @@ class TestGetBetween:
 
         rows = repo.get_between(t1, t2, publisher_id=PUB1_ID, campaign_id=CAMP1_ID)
 
-        ml_timestamps = {row[0].timestamp for row in rows}
+        ml_timestamps = {row[0].log_timestamp for row in rows}
         assert t1 in ml_timestamps
 
     def test_inclusive_upper_bound(self, db_session, seed_data):
@@ -37,7 +37,7 @@ class TestGetBetween:
 
         rows = repo.get_between(t1, t2, publisher_id=PUB1_ID, campaign_id=CAMP1_ID)
 
-        ml_timestamps = {row[0].timestamp for row in rows}
+        ml_timestamps = {row[0].log_timestamp for row in rows}
         assert t2 in ml_timestamps
 
     def test_chronological_order(self, db_session, seed_data):
@@ -47,7 +47,7 @@ class TestGetBetween:
 
         rows = repo.get_between(t1, t2, publisher_id=PUB1_ID, campaign_id=CAMP1_ID)
 
-        timestamps = [row[0].timestamp for row in rows]
+        timestamps = [row[0].log_timestamp for row in rows]
         assert timestamps == sorted(timestamps)
 
     def test_filters_by_publisher(self, db_session, seed_data):
@@ -74,7 +74,7 @@ class TestGetBetween:
         # model log at hour 10 has no matching raw_metrics row
         db_session.add(
             ModelLogs(
-                timestamp=datetime(2026, 1, 1, 10, 0, tzinfo=timezone.utc),
+                log_timestamp=datetime(2026, 1, 1, 10, 0, tzinfo=timezone.utc),
                 publisher_id=PUB1_ID,
                 model_name="markov_v1",
                 score=Decimal("0.90"),
@@ -98,7 +98,7 @@ class TestGetBetween:
 
         assert len(rows) == 1
         model_log, raw_metric = rows[0]
-        assert model_log.timestamp == t
+        assert model_log.log_timestamp == t
         assert model_log.score == Decimal("0.80")
         assert raw_metric.bucket_timestamp == t
         assert raw_metric.impression_count == 110
@@ -120,7 +120,7 @@ class TestBulkInsert:
             db_session.query(ModelLogs)
             .filter(
                 ModelLogs.publisher_id == PUB1_ID,
-                ModelLogs.timestamp == self._BASE_TS,
+                ModelLogs.log_timestamp == self._BASE_TS,
             )
             .all()
         )
@@ -140,8 +140,8 @@ class TestBulkInsert:
             db_session.query(ModelLogs)
             .filter(
                 ModelLogs.publisher_id == PUB1_ID,
-                ModelLogs.timestamp >= self._BASE_TS,
-                ModelLogs.timestamp <= self._TS_2H,
+                ModelLogs.log_timestamp >= self._BASE_TS,
+                ModelLogs.log_timestamp <= self._TS_2H,
             )
             .count()
         )
@@ -157,11 +157,11 @@ class TestBulkInsert:
             db_session.query(ModelLogs)
             .filter(
                 ModelLogs.publisher_id == PUB1_ID,
-                ModelLogs.timestamp == self._BASE_TS,
+                ModelLogs.log_timestamp == self._BASE_TS,
             )
             .one()
         )
-        assert row.timestamp == self._BASE_TS
+        assert row.log_timestamp == self._BASE_TS
         assert row.publisher_id == PUB1_ID
         assert row.model_name == "isolation_forest_v2"
         assert row.score == Decimal("0.73")
@@ -176,7 +176,7 @@ class TestBulkInsert:
             db_session.query(ModelLogs)
             .filter(
                 ModelLogs.publisher_id == PUB1_ID,
-                ModelLogs.timestamp == self._BASE_TS,
+                ModelLogs.log_timestamp == self._BASE_TS,
             )
             .one()
         )
@@ -192,7 +192,7 @@ class TestBulkInsert:
             db_session.query(ModelLogs)
             .filter(
                 ModelLogs.publisher_id == PUB1_ID,
-                ModelLogs.timestamp == self._BASE_TS,
+                ModelLogs.log_timestamp == self._BASE_TS,
             )
             .one()
         )

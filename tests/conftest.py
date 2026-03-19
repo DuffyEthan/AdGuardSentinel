@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.db.models import Campaign, DerivedMetrics, ModelLogs, Publishers, RawMetrics
+from app.db.models import Campaigns, DerivedMetrics, ModelLogs, Publishers, RawMetrics
 
 # Fixed UUIDs for deterministic test data
 PUB1_ID = uuid.UUID("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11")
@@ -51,12 +51,12 @@ def seed_data(db_session: Session) -> dict:
     db_session.add_all([pub1, pub2])
     db_session.flush()
 
-    camp1 = Campaign(
+    camp1 = Campaigns(
         campaign_id=CAMP1_ID,
         publisher_id=PUB1_ID,
         start_date=datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc),
     )
-    camp2 = Campaign(
+    camp2 = Campaigns(
         campaign_id=CAMP2_ID,
         publisher_id=PUB2_ID,
         start_date=datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc),
@@ -125,7 +125,7 @@ def seed_data(db_session: Session) -> dict:
     for ts, model, score in p1_scores:
         ml_rows.append(
             ModelLogs(
-                timestamp=datetime.fromisoformat(ts).replace(tzinfo=timezone.utc),
+                log_timestamp=datetime.fromisoformat(ts).replace(tzinfo=timezone.utc),
                 publisher_id=PUB1_ID,
                 model_name=model,
                 score=score,
@@ -141,7 +141,7 @@ def seed_data(db_session: Session) -> dict:
     for ts, model, score in p2_scores:
         ml_rows.append(
             ModelLogs(
-                timestamp=datetime.fromisoformat(ts).replace(tzinfo=timezone.utc),
+                log_timestamp=datetime.fromisoformat(ts).replace(tzinfo=timezone.utc),
                 publisher_id=PUB2_ID,
                 model_name=model,
                 score=score,
