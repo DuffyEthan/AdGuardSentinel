@@ -77,6 +77,7 @@ class TestGetBetween:
                 log_timestamp=datetime(2026, 1, 1, 10, 0, tzinfo=timezone.utc),
                 publisher_id=PUB1_ID,
                 model_name="markov_v1",
+                fraud_type="fraud_type_1",
                 score=Decimal("0.90"),
             )
         )
