@@ -113,7 +113,7 @@ class TestBulkInsert:
 
     def test_inserts_single_tuple(self, db_session, seed_data):
         repo = ModelLogsRepository(db_session)
-        tuples = [(self._BASE_TS, PUB1_ID, "markov_v1", Decimal("0.42"))]
+        tuples = [(self._BASE_TS, PUB1_ID, "markov_v1", "fraud_type_1", Decimal("0.42"))]
 
         repo.bulk_insert(tuples)
 
@@ -130,9 +130,9 @@ class TestBulkInsert:
     def test_inserts_multiple_tuples(self, db_session, seed_data):
         repo = ModelLogsRepository(db_session)
         tuples = [
-            (self._BASE_TS, PUB1_ID, "markov_v1", Decimal("0.10")),
-            (self._TS_1H, PUB1_ID, "markov_v1", Decimal("0.20")),
-            (self._TS_2H, PUB1_ID, "markov_v1", Decimal("0.30")),
+            (self._BASE_TS, PUB1_ID, "markov_v1", "fraud_type_1", Decimal("0.10")),
+            (self._TS_1H, PUB1_ID, "markov_v1", "fraud_type_1", Decimal("0.20")),
+            (self._TS_2H, PUB1_ID, "markov_v1", "fraud_type_1", Decimal("0.30")),
         ]
 
         repo.bulk_insert(tuples)
@@ -150,7 +150,7 @@ class TestBulkInsert:
 
     def test_fields_stored_correctly(self, db_session, seed_data):
         repo = ModelLogsRepository(db_session)
-        tuples = [(self._BASE_TS, PUB1_ID, "isolation_forest_v2", Decimal("0.73"))]
+        tuples = [(self._BASE_TS, PUB1_ID, "isolation_forest_v2", "fraud_type_1", Decimal("0.73"))]
 
         repo.bulk_insert(tuples)
 
@@ -169,7 +169,7 @@ class TestBulkInsert:
 
     def test_score_boundary_zero(self, db_session, seed_data):
         repo = ModelLogsRepository(db_session)
-        tuples = [(self._BASE_TS, PUB1_ID, "markov_v1", Decimal("0.00"))]
+        tuples = [(self._BASE_TS, PUB1_ID, "markov_v1", "fraud_type_1", Decimal("0.00"))]
 
         repo.bulk_insert(tuples)
 
@@ -185,7 +185,7 @@ class TestBulkInsert:
 
     def test_score_boundary_one(self, db_session, seed_data):
         repo = ModelLogsRepository(db_session)
-        tuples = [(self._BASE_TS, PUB1_ID, "markov_v1", Decimal("1.00"))]
+        tuples = [(self._BASE_TS, PUB1_ID, "markov_v1", "fraud_type_1", Decimal("1.00"))]
 
         repo.bulk_insert(tuples)
 

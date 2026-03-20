@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
 from app.db.models import Campaigns, DerivedMetrics, ModelLogs, Publishers, RawMetrics
@@ -36,6 +36,25 @@ def db_session():
     transaction = connection.begin()
     session = Session(bind=connection)
 
+    # Keep tests isolated from any persistent seed data in the shared DB.
+    session.execute(
+        text(
+            """
+        TRUNCATE TABLE
+            anomaly_periods,
+            derived_metrics,
+            model_logs,
+            raw_metrics,
+            model_reports,
+            campaigns,
+            publishers,
+            model_runs
+        RESTART IDENTITY CASCADE
+        """
+        )
+    )
+    session.flush()
+
     yield session
 
     session.close()
@@ -46,6 +65,12 @@ def db_session():
 
 @pytest.fixture()
 def seed_data(db_session: Session) -> dict:
+    # Ensure deterministic fixture state even when the DB is pre-seeded.
+    db_session.query(Publishers).filter(
+        Publishers.publisher_id.in_([PUB1_ID, PUB2_ID])
+    ).delete(synchronize_session=False)
+    db_session.flush()
+
     pub1 = Publishers(publisher_id=PUB1_ID, publisher_name="Acme Ads")
     pub2 = Publishers(publisher_id=PUB2_ID, publisher_name="BrightMedia")
     db_session.add_all([pub1, pub2])
