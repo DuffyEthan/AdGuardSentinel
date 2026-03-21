@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
 from app.db.models import Campaigns, DerivedMetrics, ModelLogs, Publishers, RawMetrics
@@ -36,6 +36,25 @@ def db_session():
     transaction = connection.begin()
     session = Session(bind=connection)
 
+    # Keep tests isolated from any persistent seed data in the shared DB.
+    session.execute(
+        text(
+            """
+        TRUNCATE TABLE
+            anomaly_periods,
+            derived_metrics,
+            model_logs,
+            raw_metrics,
+            model_reports,
+            campaigns,
+            publishers,
+            model_runs
+        RESTART IDENTITY CASCADE
+        """
+        )
+    )
+    session.flush()
+
     yield session
 
     session.close()
@@ -46,6 +65,12 @@ def db_session():
 
 @pytest.fixture()
 def seed_data(db_session: Session) -> dict:
+    # Ensure deterministic fixture state even when the DB is pre-seeded.
+    db_session.query(Publishers).filter(
+        Publishers.publisher_id.in_([PUB1_ID, PUB2_ID])
+    ).delete(synchronize_session=False)
+    db_session.flush()
+
     pub1 = Publishers(publisher_id=PUB1_ID, publisher_name="Acme Ads")
     pub2 = Publishers(publisher_id=PUB2_ID, publisher_name="BrightMedia")
     db_session.add_all([pub1, pub2])
@@ -115,36 +140,38 @@ def seed_data(db_session: Session) -> dict:
     # model_logs publisher 1, hours 00-05
     ml_rows: list[ModelLogs] = []
     p1_scores = [
-        ("2026-01-01 00:00:00", "markov_v1", Decimal("0.10")),
-        ("2026-01-01 01:00:00", "markov_v1", Decimal("0.15")),
-        ("2026-01-01 02:00:00", "markov_v1", Decimal("0.80")),
-        ("2026-01-01 03:00:00", "markov_v1", Decimal("0.75")),
-        ("2026-01-01 04:00:00", "markov_v1", Decimal("0.20")),
-        ("2026-01-01 05:00:00", "markov_v1", Decimal("0.12")),
+        ("2026-01-01 00:00:00", "markov_v1", Decimal("0.10"), "fraud_type_1"),
+        ("2026-01-01 01:00:00", "markov_v1", Decimal("0.15"), "fraud_type_2"),
+        ("2026-01-01 02:00:00", "markov_v1", Decimal("0.80"), "fraud_type_3"),
+        ("2026-01-01 03:00:00", "markov_v1", Decimal("0.75"), "fraud_type_4"),
+        ("2026-01-01 04:00:00", "markov_v1", Decimal("0.20"), "fraud_type_5"),
+        ("2026-01-01 05:00:00", "markov_v1", Decimal("0.12"), "fraud_type_6"),
     ]
-    for ts, model, score in p1_scores:
+    for ts, model, score, fraud_type in p1_scores:
         ml_rows.append(
             ModelLogs(
                 log_timestamp=datetime.fromisoformat(ts).replace(tzinfo=timezone.utc),
                 publisher_id=PUB1_ID,
                 model_name=model,
+                fraud_type=fraud_type,
                 score=score,
             )
         )
 
     # model_logs – publisher 2, hours 02-04 only (intentionally sparse)
     p2_scores = [
-        ("2026-01-01 02:00:00", "markov_v1", Decimal("0.50")),
-        ("2026-01-01 03:00:00", "markov_v1", Decimal("0.55")),
-        ("2026-01-01 04:00:00", "markov_v1", Decimal("0.45")),
+        ("2026-01-01 02:00:00", "markov_v1", Decimal("0.50"), "unknown"),
+        ("2026-01-01 03:00:00", "markov_v1", Decimal("0.55"), "unknown"),
+        ("2026-01-01 04:00:00", "markov_v1", Decimal("0.45"), "unknown"),
     ]
-    for ts, model, score in p2_scores:
+    for ts, model, score, fraud_type in p2_scores:
         ml_rows.append(
             ModelLogs(
                 log_timestamp=datetime.fromisoformat(ts).replace(tzinfo=timezone.utc),
                 publisher_id=PUB2_ID,
                 model_name=model,
                 score=score,
+                fraud_type=fraud_type,
             )
         )
     db_session.add_all(ml_rows)

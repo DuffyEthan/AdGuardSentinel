@@ -38,7 +38,7 @@ class ModelLogsRepository(BaseRepository):
         if not tuples:
             return
 
-        keys = ("log_timestamp", "publisher_id", "model_name", "score")
+        keys = ("log_timestamp", "publisher_id", "model_name", "fraud_type", "score")
         recs = [dict(zip(keys, t)) for t in tuples]
 
         self.session.bulk_insert_mappings(ModelLogs, recs)
