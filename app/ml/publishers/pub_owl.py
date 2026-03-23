@@ -1,26 +1,68 @@
 from app.ml.markov import MarkovDataGenerator
+from datetime import datetime
+from typing import Any
+import numpy as np
+from app.ml.types import InternalState, DataPacket 
 
 # taken from app.ml.markov
 
-# dummy functions that just print the current state
-def foo(_):
-    print("foo")
-    return (0,0,0,0)
+InternalState = dict[str, Any]
+DataPacket = tuple[datetime, int, int, int]
 
-def bar(_):
-    print("bar")
-    return (0,0,0,0)
 
-# dict representation of our graph with functions for each node
-bimodal = {
+def normal_behavior(settings: InternalState) -> DataPacket:
+    """Normal behaviour"""
+
+    # get timestamp
+    timestamp = settings.get('timestamp', datetime.now())
+    
+    # generating impressions using Poisson distribution
+    impressions = np.random.poisson(8000)
+
+    # generating clicks using Poisson distribution
+    clicks = np.random.poisson(420) 
+
+    # generating conversions using Poisson distribution
+    conversions = np.random.poisson(35)
+    
+    return (timestamp, impressions, clicks, conversions)
+
+
+def ctr_fraud_behavior(settings: InternalState) -> DataPacket:
+    """CTR fraud (5-10x clicks)"""
+
+    # get timestamp
+    timestamp = settings.get('timestamp', datetime.now())
+    
+    # generating impressions (they stay normal during CTR fraud)
+    impressions = np.random.poisson(8000)
+    
+    # generate spike clicks 5-10x
+    click_multiplier = np.random.randint(5, 11)
+    # calculate fraud click count
+    clicks = np.random.poisson(420) * click_multiplier
+    
+    # conversions increased slightly
+    conversions = np.random.poisson(35) + np.random.poisson(10)
+    
+    return (timestamp, impressions, clicks, conversions)
+
+
+owl_graph = {
     "normal": {
-        "function": foo,
-        "edges": [("normal", 0.95), ("abnormal", 0.05)]
+        "function": normal_behavior,
+        "edges": [
+            (0.95, "normal"),       
+            (0.05, "ctr_fraud")
+        ]
     },
-    "abnormal": {
-        "function": bar,
-        "edges": [("abnormal", 0.95), ("normal", 0.05)]
+    "ctr_fraud": {
+        "function": ctr_fraud_behavior,
+        "edges": [
+            (0.85, "ctr_fraud"),    # 85% chance to stay in ctr fraud state
+            (0.15, "normal")        # 15% chance to return to normal state
+        ]
     }
 }
-
-pub_owl = MarkovDataGenerator.from_dict(bimodal, "normal")
+# create the publisher using MarkovDataGenerator
+pub_owl = MarkovDataGenerator.from_dict(owl_graph, "normal")

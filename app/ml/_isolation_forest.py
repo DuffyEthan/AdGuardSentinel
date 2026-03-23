@@ -224,7 +224,6 @@ def compute_features(df):
 
 # isolation forest anomaly detection 
 class anomaly_detection:
-
     
     def __init__(self, contamination=0.05, threshold=0.7):
         """
@@ -240,7 +239,7 @@ class anomaly_detection:
         )
         self.is_fitted = False
         
-        # features for the model
+        # features for the model 
         self.feature_cols = [
             'ctr',
             'cvr',
@@ -249,20 +248,13 @@ class anomaly_detection:
             'ctr_deviation',
             'impression_count',
             'impression_ratio',
-
-            # impression fraud
             'impression_velocity',
             'impression_spike_ratio',
             'impression_volatility',
-            'abnormal_flag',
-
-            # click injection fraud
-            'suspicious_avg_time',
-            'suspicious_median_time',
-            'low_time_variance',
-            'high_fast_rate',
-            'fast_conversion_ratio',
-            'time_deviation'
+            'abnormal_volume', 
+            'cvr_spike_ratio', 
+            'suspicious_cvr',  
+            'conversion_clustering'  
         ]
     
     def fit(self, df):
@@ -542,3 +534,92 @@ def run_full_pipeline(
             "status": "error",
             "error_message": str(e)
         }
+
+
+
+
+
+
+
+
+
+
+# TRAINING AND FREEZING THE MODELS
+
+if __name__ == "__main__":
+    print("\n" + "=" * 80)
+    print("TRAINING AND FREEZING MODELS V2")
+    print("=" * 80)
+    
+    from datetime import datetime, timedelta
+    from app.ml.publishers import publisher_catalog
+    import pandas as pd
+    
+    print("\n[1/5] Generating training data from publishers...")
+    
+    data = []
+    start_time = datetime(2026, 1, 1, 0, 0, 0)
+    
+    for pub_name, publisher in publisher_catalog.items():
+        print(f"      Generating {pub_name}...")
+        
+        for hour in range(200):
+            timestamp = start_time + timedelta(hours=hour)
+            settings = {'timestamp': timestamp}
+            ts, impressions, clicks, conversions = publisher.publisher_data_next(settings)
+            
+            data.append({
+                'bucket_timestamp': ts,
+                'publisher_id': pub_name,
+                'impression_count': impressions,
+                'click_count': clicks,
+                'conversion_count': conversions
+            })
+    
+    df = pd.DataFrame(data)
+    print(f"     Generated {len(df)} rows from {len(publisher_catalog)} publishers")
+    
+    print("\n[2/5] Computing features...")
+    df_features = compute_features(df)
+    print(f"  Computed {len(df_features.columns)} features")
+    
+    predictions, (ctr_model, impression_model, click_model) = train_multiple_detection_model(
+        df_features,
+        contamination=0.1,
+        threshold=0.7
+    )
+    print(" 3 models trained")
+    
+    print("\n[4/5] Freezing models to disk...")
+    
+    save_model(ctr_model, 'app/ml/models/ctr_fraud_detector_v2.joblib')
+    print("      ctr_fraud_detector_v2.joblib")
+    
+    save_model(impression_model, 'app/ml/models/impression_fraud_detector_v2.joblib')
+    print("      impression_fraud_detector_v2.joblib")
+    
+    save_model(click_model, 'app/ml/models/click_injection_detector_v2.joblib')
+    print("      click_injection_detector_v2.joblib")
+    
+    print("\n[5/5] Training results:")
+    
+    total_fraud = len(predictions[predictions['is_organic'] == 0])
+    total_organic = len(predictions[predictions['is_organic'] == 1])
+    
+    print(f"      Total: {len(predictions)} samples")
+    print(f"      Organic: {total_organic} ({total_organic/len(predictions)*100:.1f}%)")
+    print(f"      Fraud: {total_fraud} ({total_fraud/len(predictions)*100:.1f}%)")
+    
+    print("\n      Fraud breakdown:")
+    for fraud_type in ['ctr', 'impression', 'click_injection', 'none']:
+        count = len(predictions[predictions['primary_fraud_type'] == fraud_type])
+        print(f"        - {fraud_type}: {count} ({count/len(predictions)*100:.1f}%)")
+    
+    print("\n" + "=" * 80)
+    print("3 MODELS FROZEN AND READY")
+    print("=" * 80)
+    print("\nFrozen models saved to:")
+    print("  • app/ml/models/ctr_fraud_detector_v2.joblib")
+    print("  • app/ml/models/impression_fraud_detector_v2.joblib")
+    print("  • app/ml/models/click_injection_detector_v2.joblib")
+    print("\nYou can now commit and push these files!\n")

@@ -36,8 +36,7 @@ class _MarkovState:
     def __init__(self, name: str, fun: DataProducer, edges: list[tuple[float, str]]):
         self.name = name
         self.fun = fun
-        self.next_nodes, self.next_weights = zip(*edges)
-
+        self.next_weights, self.next_nodes = zip(*edges)
     def next(self, settings: InternalState) -> tuple[DataPacket, str]:
         return (
             self.fun(settings),
