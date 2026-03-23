@@ -112,9 +112,9 @@ def log_results_to_db(predictions, model_name="isolation_forest_v1"):
     
     # inserting into model_logs table
     insert_query = """
-        INSERT INTO model_logs (timestamp, publisher_id, model_name, score, fraud_type)
+        INSERT INTO model_logs (log_timestamp, publisher_id, model_name, score, fraud_type)
         VALUES (%s, %s, %s, %s, %s)
-        ON CONFLICT (publisher_id, timestamp) 
+        ON CONFLICT (publisher_id, log_timestamp) 
         DO UPDATE SET 
             score = EXCLUDED.score,
             model_name = EXCLUDED.model_name,
@@ -414,7 +414,7 @@ def train_isolation_forest(df: pd.DataFrame, contamination: float = 0.05, thresh
     Train model and return predictions with trust_score and is_organic columns.
     
     """
-    # creating an instance of the AnomalyDetection (contamination, threshold) class
+    # creating an instance of the anomaly_detection (contamination, threshold) class
     model = anomaly_detection(contamination = contamination, threshold = threshold)
 
     # calling model.fit(df) function - training the model on historical data

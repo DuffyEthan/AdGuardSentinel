@@ -11,6 +11,7 @@ from app.repositories.model_logs_repository import ModelLogsRepository
 from app.repositories.raw_metrics_repository import RawMetricsRepository
 from app.repositories.sentinel_repository import SentinelRepository
 from app.fastapi.services.sentinel_service import sentinel_service
+from app.fastapi.services import anomaly_periods_service
 
 from app.ml._isolation_forest import run_full_pipeline
 
@@ -197,3 +198,51 @@ def sentinel_compare(
         as_of = datetime.now(timezone.utc)
 
     return sentinel_service.compare_publisher_to_network(session, publisher_id, as_of)
+
+
+# ── Anomaly Periods Endpoints ───────────────────────────────────────────
+
+
+@app.get("/anomaly-periods/{publisher_id}")
+def get_anomaly_periods(
+    publisher_id: uuid.UUID,
+    campaign_id: uuid.UUID,
+    t1: datetime,
+    t2: datetime,
+    session: Session = Depends(get_session),
+):
+    """Return anomaly periods overlapping [t1, t2], formatted for the chart."""
+    return anomaly_periods_service.get_anomaly_periods_for_chart(
+        session, publisher_id, campaign_id, t1, t2
+    )
+
+
+@app.post("/anomaly-periods/backfill/{publisher_id}")
+def backfill_anomaly_periods(
+    publisher_id: uuid.UUID,
+    campaign_id: uuid.UUID,
+    since: datetime | None = None,
+    session: Session = Depends(get_session),
+):
+    """Re-compute all anomaly periods from model_logs for a publisher."""
+    periods = anomaly_periods_service.backfill_anomaly_periods(
+        session, publisher_id, campaign_id, since
+    )
+    return {
+        "publisher_id": str(publisher_id),
+        "campaign_id": str(campaign_id),
+        "periods_created": len(periods),
+        "periods": [
+            {
+                "period_id": str(p.period_id),
+                "anomaly_type": p.anomaly_type,
+                "start": p.start_timestamp.isoformat(),
+                "end": p.end_timestamp.isoformat() if p.end_timestamp else None,
+                "avg_score": p.avg_score,
+                "max_score": p.max_score,
+                "log_count": p.log_count,
+            }
+            for p in periods
+        ],
+    }
+

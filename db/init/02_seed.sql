@@ -6,7 +6,7 @@ INSERT INTO publishers (publisher_id, publisher_name) VALUES
 ON CONFLICT DO NOTHING;
 
 -- Seed campaigns
-INSERT INTO campaign (campaign_id, publisher_id, start_date) VALUES
+INSERT INTO campaigns (campaign_id, publisher_id, start_date) VALUES
   ('c2aade11-be2d-6a1a-dd8f-8ddbdf5a2c33', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', '2026-01-01 00:00:00+00'),
   ('d3bbef22-cf3e-7b2b-ee90-9eece06b3d44', 'b1ffcd00-ad1c-5f09-cc7e-7ccace491b22', '2026-01-01 00:00:00+00'),
   ('f5ddff44-e050-9d4d-0012-100e028d5f66', 'e4ccde33-df4f-8c3c-ff01-0ffdf17c4e55', '2026-01-01 00:00:00+00')

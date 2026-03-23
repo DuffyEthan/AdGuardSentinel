@@ -43,7 +43,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
-from app.db.models import Campaign, Publishers, RawMetrics
+from app.db.models import Campaigns, Publishers, RawMetrics
 
 load_dotenv()
 
@@ -93,10 +93,10 @@ def ensure_campaign_exists(
     publisher_id: uuid.UUID = DEFAULT_PUBLISHER_ID,
 ) -> uuid.UUID:
     """Ensure a campaign exists to satisfy foreign key constraints."""
-    existing = session.get(Campaign, campaign_id)
+    existing = session.get(Campaigns, campaign_id)
     if existing is None:
         session.add(
-            Campaign(
+            Campaigns(
                 campaign_id=campaign_id,
                 publisher_id=publisher_id,
                 start_date=datetime.now(timezone.utc),
@@ -402,9 +402,8 @@ def main() -> None:
         uuid.UUID(camp_env) if camp_env and camp_env.strip() else DEFAULT_CAMPAIGN_ID
     )
 
-    assert SessionLocal is not None, (
-        "DATABASE_URL is not configured; cannot create a session."
-    )
+    if SessionLocal is None:
+        raise RuntimeError("DATABASE_URL is not configured; cannot create a session.")
     session = SessionLocal()
     try:
         ensure_publisher_exists(session, publisher_id)
@@ -446,9 +445,8 @@ if __name__ == "__main__":
     camp_env = os.getenv("CAMPAIGN_ID")
     camp = uuid.UUID(camp_env) if camp_env and camp_env.strip() else DEFAULT_CAMPAIGN_ID
 
-    assert SessionLocal is not None, (
-        "DATABASE_URL is not configured; cannot create a session."
-    )
+    if SessionLocal is None:
+        raise RuntimeError("DATABASE_URL is not configured; cannot create a session.")
     session = SessionLocal()
     try:
         df_db = fetch_raw_metrics_from_db(

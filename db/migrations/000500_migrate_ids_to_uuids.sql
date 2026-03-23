@@ -77,7 +77,7 @@ ALTER TABLE raw_metrics
   ADD PRIMARY KEY (publisher_id, bucket_timestamp);
 
 ALTER TABLE model_logs
-  ADD PRIMARY KEY (publisher_id, timestamp);
+  ADD PRIMARY KEY (publisher_id, log_timestamp);
 
 ALTER TABLE raw_metrics
   ADD CONSTRAINT raw_metrics_publisher_id_fkey
@@ -170,7 +170,7 @@ ALTER TABLE raw_metrics
   ADD PRIMARY KEY (publisher_id, bucket_timestamp);
 
 ALTER TABLE model_logs
-  ADD PRIMARY KEY (publisher_id, timestamp);
+  ADD PRIMARY KEY (publisher_id, log_timestamp);
 
 ALTER TABLE raw_metrics
   ADD CONSTRAINT raw_metrics_publisher_id_fkey

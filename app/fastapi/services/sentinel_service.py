@@ -28,9 +28,9 @@ def get_trust_score_explanation(
         session.query(ModelLogs)
         .filter(
             ModelLogs.publisher_id == publisher_id,
-            ModelLogs.timestamp <= as_of,
+            ModelLogs.log_timestamp <= as_of,
         )
-        .order_by(desc(ModelLogs.timestamp))
+        .order_by(desc(ModelLogs.log_timestamp))
         .first()
     )
 
