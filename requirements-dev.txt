@@ -61,3 +61,4 @@ typing-extensions==4.15.0 ; python_version >= "3.11"
 tzdata==2025.3 ; python_version >= "3.11"
 urllib3==2.6.3 ; python_version >= "3.11"
 watchdog==6.0.0 ; python_version >= "3.11" and platform_system != "Darwin"
+codecarbon

@@ -10,6 +10,7 @@ stages:
   - quality
   - build
   - test
+  - carbon
   - docker-build
   - deploy
 
@@ -147,8 +148,9 @@ test:
     - chmod +x /usr/local/bin/dbmate
     - echo "Running migrations..."
     - dbmate --wait --migrations-dir ./db/migrations --schema-file ./db/schema.sql up
-    - echo "Running tests..."
-    - pytest --cov=./ --cov-report=xml
+    - echo "Running tests with carbon tracking"
+    - python scripts/carbon_test.py
+
   coverage: '/TOTAL.*\s+(\d+%)$/'
   artifacts:
     reports:
