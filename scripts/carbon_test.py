@@ -1,26 +1,27 @@
 from codecarbon import EmissionsTracker
 import subprocess
-import sys
+
 
 def main():
     print("🌱 Starting carbon measurement for test stage...")
 
-    tracker = EmissionsTracker(country_iso_code="IRL")
+    tracker = EmissionsTracker(
+        project_name="ci-tests",
+        output_dir=".",
+        measure_power_secs=10
+    )
+
     tracker.start()
 
-    result = subprocess.run(
-        ["pytest", "--cov=./", "--cov-report=xml"]
+    # run tests
+    subprocess.run(
+        ["pytest", "--cov=app", "--cov-report=xml"],
+        check=True
     )
 
     emissions = tracker.stop()
 
-    print(f"\n🌍 Carbon emissions (tests): {emissions:.6f} kg CO2")
-
-    # Saves the artifacts for CI
-    with open("emissions.log", "w") as f:
-        f.write(str(emissions))
-
-    sys.exit(result.returncode)
+    print(f"🌍 CO2 emitted: {emissions:.6f} kg")
 
 if __name__ == "__main__":
     main()
