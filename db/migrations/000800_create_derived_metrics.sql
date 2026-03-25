@@ -2,7 +2,7 @@
 CREATE TABLE IF NOT EXISTS derived_metrics (
     bucket_timestamp TIMESTAMPTZ NOT NULL,
     publisher_id UUID NOT NULL REFERENCES publishers(publisher_id) ON DELETE CASCADE,
-    campaign_id UUID NOT NULL REFERENCES campaign(campaign_id) ON DELETE CASCADE,
+    campaign_id UUID NOT NULL REFERENCES campaigns(campaign_id) ON DELETE CASCADE,
 
     -- Means (IQR outlier-excluded)
     impressions_mean DOUBLE PRECISION,

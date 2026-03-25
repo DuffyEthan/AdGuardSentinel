@@ -1,11 +1,11 @@
 -- migrate:up
 CREATE TABLE IF NOT EXISTS raw_metrics(
-  bucket_timestamp  timestamptz NOT NULL,
-  publisher_id      integer     NOT NULL REFERENCES publishers(publisher_id) ON DELETE CASCADE,
+  bucket_timestamp  TIMESTAMPTZ NOT NULL,
+  publisher_id      INTEGER NOT NULL REFERENCES publishers(publisher_id) ON DELETE CASCADE,
 
-  impression_count  integer     NOT NULL DEFAULT 0,
-  click_count       integer     NOT NULL DEFAULT 0,
-  conversion_count  integer     NOT NULL DEFAULT 0,
+  impression_count  INTEGER NOT NULL DEFAULT 0,
+  click_count       INTEGER NOT NULL DEFAULT 0,
+  conversion_count  INTEGER NOT NULL DEFAULT 0,
 
   PRIMARY KEY (publisher_id, bucket_timestamp)
 );
