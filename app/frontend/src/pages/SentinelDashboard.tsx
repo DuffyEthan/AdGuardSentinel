@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import StatCard from '../components/sentinel/StatCard';
 import MiniPieChart from '../components/sentinel/MiniPieChart';
 import PublisherTable from '../components/sentinel/PublisherTable';
@@ -96,6 +97,7 @@ function SentinelDashboard({
   fraudEvents          = DEMO_FRAUD_EVENTS,
   overview             = DEMO_OVERVIEW,
 }: SentinelDashboardProps) {
+  const navigate = useNavigate();
   const [sortBy, setSortBy]                       = useState('trustScore');
   const [selectedPublisher, setSelectedPublisher] = useState(publishers[0]?.name ?? '');
   const [messages, setMessages]                   = useState<ChatMessage[]>(DEMO_INIT_MESSAGES);
@@ -108,8 +110,8 @@ function SentinelDashboard({
     return bVal - aVal;
   });
 
-  function handleShowDetails(pub: PublisherRow) {
-    console.log('Show details for', pub.name);
+  function handleShowDetails(_pub: PublisherRow) {
+    navigate('/publishers');
   }
 
   function handleExplainTrust() {
