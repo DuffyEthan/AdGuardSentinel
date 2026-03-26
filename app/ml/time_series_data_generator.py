@@ -19,7 +19,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
-from app.db.models import Campaign, Publishers, RawMetrics
+from app.db.models import Campaigns, Publishers, RawMetrics
 from app.ml.publishers import publisher_catalog
 
 load_dotenv()
@@ -94,10 +94,10 @@ def ensure_campaign_exists(
     publisher_id: uuid.UUID,
 ) -> uuid.UUID:
     """Ensure a campaign exists to satisfy foreign key constraints."""
-    existing = session.get(Campaign, campaign_id)
+    existing = session.get(Campaigns, campaign_id)
     if existing is None:
         session.add(
-            Campaign(
+            Campaigns(
                 campaign_id=campaign_id,
                 publisher_id=publisher_id,
                 start_date=datetime.now(timezone.utc),
