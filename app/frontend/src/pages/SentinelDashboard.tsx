@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import StatCard from '../components/sentinel/StatCard';
-import MiniPieChart from '../components/sentinel/MiniPieChart';
 import PublisherTable from '../components/sentinel/PublisherTable';
 import TrustDistributionChart from '../components/sentinel/TrustDistributionChart';
 import FraudEventsChart from '../components/sentinel/FraudEventsChart';
