@@ -12,7 +12,6 @@ import type {
   FraudEvent,
   ChatMessage,
   PublisherOverview,
-  MiniPieSegment,
 } from '../types/sentinel';
 
 // ─── Demo / placeholder data ────────────────────────────────────────────────
@@ -76,7 +75,6 @@ export interface SentinelDashboardProps {
   suspiciousPublishers?: number;
   avgNetworkCtr?: number;
   fraudEventsLast24h?: number;
-  miniPieSegments?: MiniPieSegment[];
   /** Table data */
   publishers?: PublisherRow[];
   /** Charts data */
