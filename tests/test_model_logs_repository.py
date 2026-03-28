@@ -27,7 +27,7 @@ class TestGetBetween:
 
         rows = repo.get_between(t1, t2, publisher_id=PUB1_ID, campaign_id=CAMP1_ID)
 
-        ml_timestamps = {row[0].timestamp for row in rows}
+        ml_timestamps = {row[0].log_timestamp for row in rows}
         assert t1 in ml_timestamps
 
     def test_inclusive_upper_bound(self, db_session, seed_data):
@@ -37,7 +37,7 @@ class TestGetBetween:
 
         rows = repo.get_between(t1, t2, publisher_id=PUB1_ID, campaign_id=CAMP1_ID)
 
-        ml_timestamps = {row[0].timestamp for row in rows}
+        ml_timestamps = {row[0].log_timestamp for row in rows}
         assert t2 in ml_timestamps
 
     def test_chronological_order(self, db_session, seed_data):
@@ -47,7 +47,7 @@ class TestGetBetween:
 
         rows = repo.get_between(t1, t2, publisher_id=PUB1_ID, campaign_id=CAMP1_ID)
 
-        timestamps = [row[0].timestamp for row in rows]
+        timestamps = [row[0].log_timestamp for row in rows]
         assert timestamps == sorted(timestamps)
 
     def test_filters_by_publisher(self, db_session, seed_data):
@@ -74,9 +74,10 @@ class TestGetBetween:
         # model log at hour 10 has no matching raw_metrics row
         db_session.add(
             ModelLogs(
-                timestamp=datetime(2026, 1, 1, 10, 0, tzinfo=timezone.utc),
+                log_timestamp=datetime(2026, 1, 1, 10, 0, tzinfo=timezone.utc),
                 publisher_id=PUB1_ID,
                 model_name="markov_v1",
+                fraud_type="fraud_type_1",
                 score=Decimal("0.90"),
             )
         )
@@ -98,7 +99,7 @@ class TestGetBetween:
 
         assert len(rows) == 1
         model_log, raw_metric = rows[0]
-        assert model_log.timestamp == t
+        assert model_log.log_timestamp == t
         assert model_log.score == Decimal("0.80")
         assert raw_metric.bucket_timestamp == t
         assert raw_metric.impression_count == 110
@@ -112,7 +113,7 @@ class TestBulkInsert:
 
     def test_inserts_single_tuple(self, db_session, seed_data):
         repo = ModelLogsRepository(db_session)
-        tuples = [(self._BASE_TS, PUB1_ID, "markov_v1", Decimal("0.42"))]
+        tuples = [(self._BASE_TS, PUB1_ID, "markov_v1", "fraud_type_1", Decimal("0.42"))]
 
         repo.bulk_insert(tuples)
 
@@ -120,7 +121,7 @@ class TestBulkInsert:
             db_session.query(ModelLogs)
             .filter(
                 ModelLogs.publisher_id == PUB1_ID,
-                ModelLogs.timestamp == self._BASE_TS,
+                ModelLogs.log_timestamp == self._BASE_TS,
             )
             .all()
         )
@@ -129,9 +130,9 @@ class TestBulkInsert:
     def test_inserts_multiple_tuples(self, db_session, seed_data):
         repo = ModelLogsRepository(db_session)
         tuples = [
-            (self._BASE_TS, PUB1_ID, "markov_v1", Decimal("0.10")),
-            (self._TS_1H, PUB1_ID, "markov_v1", Decimal("0.20")),
-            (self._TS_2H, PUB1_ID, "markov_v1", Decimal("0.30")),
+            (self._BASE_TS, PUB1_ID, "markov_v1", "fraud_type_1", Decimal("0.10")),
+            (self._TS_1H, PUB1_ID, "markov_v1", "fraud_type_1", Decimal("0.20")),
+            (self._TS_2H, PUB1_ID, "markov_v1", "fraud_type_1", Decimal("0.30")),
         ]
 
         repo.bulk_insert(tuples)
@@ -140,8 +141,8 @@ class TestBulkInsert:
             db_session.query(ModelLogs)
             .filter(
                 ModelLogs.publisher_id == PUB1_ID,
-                ModelLogs.timestamp >= self._BASE_TS,
-                ModelLogs.timestamp <= self._TS_2H,
+                ModelLogs.log_timestamp >= self._BASE_TS,
+                ModelLogs.log_timestamp <= self._TS_2H,
             )
             .count()
         )
@@ -149,7 +150,7 @@ class TestBulkInsert:
 
     def test_fields_stored_correctly(self, db_session, seed_data):
         repo = ModelLogsRepository(db_session)
-        tuples = [(self._BASE_TS, PUB1_ID, "isolation_forest_v2", Decimal("0.73"))]
+        tuples = [(self._BASE_TS, PUB1_ID, "isolation_forest_v2", "fraud_type_1", Decimal("0.73"))]
 
         repo.bulk_insert(tuples)
 
@@ -157,18 +158,18 @@ class TestBulkInsert:
             db_session.query(ModelLogs)
             .filter(
                 ModelLogs.publisher_id == PUB1_ID,
-                ModelLogs.timestamp == self._BASE_TS,
+                ModelLogs.log_timestamp == self._BASE_TS,
             )
             .one()
         )
-        assert row.timestamp == self._BASE_TS
+        assert row.log_timestamp == self._BASE_TS
         assert row.publisher_id == PUB1_ID
         assert row.model_name == "isolation_forest_v2"
         assert row.score == Decimal("0.73")
 
     def test_score_boundary_zero(self, db_session, seed_data):
         repo = ModelLogsRepository(db_session)
-        tuples = [(self._BASE_TS, PUB1_ID, "markov_v1", Decimal("0.00"))]
+        tuples = [(self._BASE_TS, PUB1_ID, "markov_v1", "fraud_type_1", Decimal("0.00"))]
 
         repo.bulk_insert(tuples)
 
@@ -176,7 +177,7 @@ class TestBulkInsert:
             db_session.query(ModelLogs)
             .filter(
                 ModelLogs.publisher_id == PUB1_ID,
-                ModelLogs.timestamp == self._BASE_TS,
+                ModelLogs.log_timestamp == self._BASE_TS,
             )
             .one()
         )
@@ -184,7 +185,7 @@ class TestBulkInsert:
 
     def test_score_boundary_one(self, db_session, seed_data):
         repo = ModelLogsRepository(db_session)
-        tuples = [(self._BASE_TS, PUB1_ID, "markov_v1", Decimal("1.00"))]
+        tuples = [(self._BASE_TS, PUB1_ID, "markov_v1", "fraud_type_1", Decimal("1.00"))]
 
         repo.bulk_insert(tuples)
 
@@ -192,7 +193,7 @@ class TestBulkInsert:
             db_session.query(ModelLogs)
             .filter(
                 ModelLogs.publisher_id == PUB1_ID,
-                ModelLogs.timestamp == self._BASE_TS,
+                ModelLogs.log_timestamp == self._BASE_TS,
             )
             .one()
         )

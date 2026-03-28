@@ -39,9 +39,3 @@ export interface PublisherOverview {
   watchlist: number;
   fraudulent: number;
 }
-
-export interface MiniPieSegment {
-  value: number;
-  color: string;
-  label?: string;
-}

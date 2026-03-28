@@ -10,6 +10,7 @@ stages:
   - quality
   - build
   - test
+  - carbon
   - docker-build
   - deploy
 
@@ -19,6 +20,7 @@ variables:
   POETRY_VERSION: "1.8.5"
   UV_CACHE_DIR: "${CI_PROJECT_DIR}/.cache/uv"
   PIP_CACHE_DIR: "${CI_PROJECT_DIR}/.cache/pip"
+  SAST_EXCLUDED_PATHS: ".cache,.venv,app/frontend/node_modules,app/frontend/dist"
 
 cache:
   paths:
@@ -30,11 +32,13 @@ cache:
 .python-base:
   image: python:3.11
   before_script:
+    - pip install --upgrade pip
     - pip install "poetry==$POETRY_VERSION"
     - poetry config virtualenvs.create false
     - pip install uv
     - "[ -d .venv ] || python -m venv .venv"
     - source .venv/bin/activate
+    - python -m pip install --upgrade "pip>=26.0.0"
   cache:
     paths:
       - .cache/uv
@@ -61,15 +65,13 @@ dependency_check:
     - uv pip install safety
     - echo "Check for vulnerable dependencies."
     - |
-      safety check --full-report || echo "Vulnerabilities have been found, review required!"
+      safety scan --output screen || echo "Vulnerabilities have been found, review required!"
 
-      safety check --json > safety-report.json || true
+      safety scan --output json > safety-report.json || true
 
       echo "DEPENDENCY REPORT"
-      safety check --bare || echo "no issues discovered"
+      safety scan --output bare || echo "no issues discovered"
   artifacts:
-    reports:
-      sast: safety-report.json
     paths:
       - safety-report.json
   allow_failure: true
@@ -146,8 +148,9 @@ test:
     - chmod +x /usr/local/bin/dbmate
     - echo "Running migrations..."
     - dbmate --wait --migrations-dir ./db/migrations --schema-file ./db/schema.sql up
-    - echo "Running tests..."
-    - pytest --cov=./ --cov-report=xml
+    - echo "Running tests with carbon tracking"
+    - python scripts/carbon_test.py
+
   coverage: '/TOTAL.*\s+(\d+%)$/'
   artifacts:
     reports:

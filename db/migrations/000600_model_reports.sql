@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS model_runs(
     model_name TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS ml_reports(
+CREATE TABLE IF NOT EXISTS model_reports(
     model_run_id UUID REFERENCES model_runs(model_run_id) ON DELETE CASCADE,
     publisher_id UUID NOT NULL REFERENCES publishers(publisher_id) ON DELETE CASCADE,
     report_timestamp TIMESTAMPTZ NOT NULL,
@@ -14,6 +14,6 @@ CREATE TABLE IF NOT EXISTS ml_reports(
 );
 
 --migrate:down
-DROP TABLE IF EXISTS ml_reports;
+DROP TABLE IF EXISTS model_reports;
 
 DROP TABLE IF EXISTS model_runs;

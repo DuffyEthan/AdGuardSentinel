@@ -1,26 +1,45 @@
 from app.ml.markov import MarkovDataGenerator
+from datetime import datetime
+from typing import Any
+import numpy as np
+from app.ml.types import InternalState, DataPacket  
 
-# taken from app.ml.markov
+InternalState = dict[str, Any]
+DataPacket = tuple[datetime, int, int, int]
 
-# dummy functions that just print the current state
-def foo(_):
-    print("foo")
-    return (0,0,0,0)
+def normal_behavior(settings: InternalState) -> DataPacket:
+    """Normal behaviour"""
+    timestamp = settings.get('timestamp', datetime.now())
+    impressions = np.random.poisson(8000)
+    clicks = np.random.poisson(420)
+    conversions = np.random.poisson(35)
+    return (timestamp, impressions, clicks, conversions)
 
-def bar(_):
-    print("bar")
-    return (0,0,0,0)
+def click_injection_behavior(settings: InternalState) -> DataPacket:
+    """Click injection (high CVR)"""
+    timestamp = settings.get('timestamp', datetime.now())
+    impressions = np.random.poisson(8000)
+    clicks = np.random.poisson(420)
+    conversion_multiplier = np.random.randint(6, 11)
+    conversions = np.random.poisson(35) * conversion_multiplier
+    conversions = min(conversions, clicks)
+    return (timestamp, impressions, clicks, conversions)
 
-# dict representation of our graph with functions for each node
-bimodal = {
+dog_graph = {
     "normal": {
-        "function": foo,
-        "edges": [("normal", 0.95), ("abnormal", 0.05)]
+        "function": normal_behavior,
+        "edges": [
+            (0.93, "normal"),
+            (0.07, "click_injection")
+        ]
     },
-    "abnormal": {
-        "function": bar,
-        "edges": [("abnormal", 0.95), ("normal", 0.05)]
+    "click_injection": {
+        "function": click_injection_behavior,
+        "edges": [
+            (0.88, "click_injection"),
+            (0.12, "normal")
+        ]
     }
 }
 
-pub_dog = MarkovDataGenerator.from_dict(bimodal, "normal")
+pub_dog = MarkovDataGenerator.from_dict(dog_graph, "normal")
