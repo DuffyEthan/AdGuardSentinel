@@ -10,9 +10,10 @@ Each tick simulates one 5-minute data bucket:
                    catalog and upsert the resulting row into raw_metrics.
   2. DERIVED     – recompute derived_metrics for every publisher/campaign
                    (IQR-filtered mean/std/weighted-mean over the last 250 rows).
-  3. ML INFERENCE– every N ticks, load the pre-trained Isolation Forest
-                   model, run predict() on a rolling window of raw_metrics,
-                   and write trust-scores into model_logs.
+  3. ML INFERENCE– every N ticks, run 3 pre-trained fraud-detection models
+                   (CTR fraud, impression fraud, click injection) on a rolling
+                   window of raw_metrics, combine scores, and write to
+                   model_logs.  Then update anomaly_periods incrementally.
   4. EXTRAS      – an extensible list of additional step callables that
                    receive (session, publisher_id, campaign_id, sim_time).
 
@@ -29,11 +30,15 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
+import joblib
+import numpy as np
 import pandas as pd
 from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
+from app.fastapi.services.anomaly_periods_service import process_new_log
 from app.fastapi.services.derived_metrics_service import compute_and_store
+from app.ml._isolation_forest import compute_features
 from app.ml.batch_data_generator import upsert_raw_metrics
 from app.ml.publishers import publisher_catalog
 from app.repositories.model_logs_repository import ModelLogsRepository
@@ -55,15 +60,43 @@ ML_INFERENCE_EVERY_N_TICKS: int = 50
 """Run ML inference once every N ticks."""
 
 ML_WINDOW_SIZE: int = 250
-"""Number of most-recent raw_metrics rows fed to the model."""
+"""Number of most-recent raw_metrics rows fed to the models."""
 
 ML_MIN_ROWS: int = 25
 """Minimum rows required before inference is attempted."""
 
-MODEL_PATH: str = "app/ml/models/_isolation_forest.joblib"
-"""Path to the pre-trained Isolation Forest .joblib file."""
+MODEL_PATHS: dict[str, str] = {
+    "ctr_fraud": "app/ml/models/ctr_fraud_detector_v2.joblib",
+    "impression_fraud": "app/ml/models/impression_fraud_detector_v2.joblib",
+    "click_injection": "app/ml/models/click_injection_detector_v2.joblib",
+}
+"""Paths to the 3 pre-trained fraud-detection model files."""
 
-MODEL_NAME: str = "isolation_forest_v1"
+FEATURE_SETS: dict[str, list[str]] = {
+    "ctr_fraud": [
+        "ctr",
+        "ctr_rolling_mean",
+        "ctr_rolling_std",
+        "ctr_deviation",
+    ],
+    "impression_fraud": [
+        "impression_count",
+        "impression_ratio",
+        "impression_velocity",
+        "impression_spike_ratio",
+        "impression_volatility",
+        "abnormal_volume",
+    ],
+    "click_injection": [
+        "cvr",
+        "cvr_spike_ratio",
+        "suspicious_cvr",
+        "conversion_clustering",
+    ],
+}
+"""Feature columns required by each model."""
+
+MODEL_NAME: str = "multi_model_v2"
 """Model name written into model_logs.model_name."""
 
 # Type alias for extensible extra-step callables.
@@ -126,16 +159,62 @@ def step_derived_metrics(
     return result is not None
 
 
+def _normalize_scores(raw_scores: np.ndarray) -> np.ndarray:
+    """Normalize raw decision_function output from [-1, 1] to [0, 1].
+
+    Mapping:  -1 (fraud) -> 0.0,  +1 (organic) -> 1.0
+    """
+    return np.clip((raw_scores + 1.0) / 2.0, 0.0, 1.0)
+
+
+def _determine_fraud_type(
+    per_model_scores: dict[str, np.ndarray],
+    trust_scores: np.ndarray,
+    threshold: float = 0.5,
+) -> list[str]:
+    """Determine the primary fraud type for each row.
+
+    For rows where trust_score >= threshold, the fraud type is ``"none"``.
+    For anomalous rows, the fraud type is the model with the lowest score.
+    """
+    n_rows = len(trust_scores)
+    fraud_types: list[str] = []
+
+    for i in range(n_rows):
+        if trust_scores[i] >= threshold:
+            fraud_types.append("none")
+            continue
+
+        # Find the model with the lowest (most suspicious) score.
+        worst_type = "none"
+        worst_score = 1.0
+        for fraud_type, scores in per_model_scores.items():
+            if scores[i] < worst_score:
+                worst_score = scores[i]
+                worst_type = fraud_type
+        fraud_types.append(worst_type)
+
+    return fraud_types
+
+
 def step_ml_inference(
     session: Session,
     publisher_id: uuid.UUID,
     campaign_id: uuid.UUID,
     current_sim_time: datetime,
-    model: Any,
+    models: dict[str, Any],
 ) -> int:
-    """Run inference on a rolling window and write trust-scores to model_logs.
+    """Run 3 fraud-detection models and write combined scores to model_logs.
 
-    Returns the number of prediction rows written, or 0 if skipped.
+    Steps:
+      1. Fetch rolling window of raw_metrics rows.
+      2. Compute features (CTR, CVR, rolling stats, etc.).
+      3. Run each model's decision_function on its feature subset.
+      4. Normalize scores to [0, 1] and combine (element-wise min).
+      5. Write one row per timestamp to model_logs.
+      6. Call process_new_log() for the latest row to update anomaly_periods.
+
+    Returns the number of model_logs rows written, or 0 if skipped.
     """
     raw_repo = RawMetricsRepository(session)
     # Use current_sim_time + 1 minute so the row we just wrote
@@ -157,7 +236,7 @@ def step_ml_inference(
         )
         return 0
 
-    # Convert ORM rows to a DataFrame matching what the model expects.
+    # Convert ORM rows to a DataFrame.
     df = pd.DataFrame(
         [
             {
@@ -172,21 +251,52 @@ def step_ml_inference(
     )
     df["bucket_timestamp"] = pd.to_datetime(df["bucket_timestamp"], utc=True)
 
-    predictions = model.predict(df)
+    # Compute engineered features required by all 3 models.
+    features_df = compute_features(df)
 
-    # Format as (timestamp, publisher_id, model_name, score) tuples for bulk_insert.
+    # Run each model and collect normalized scores.
+    per_model_scores: dict[str, np.ndarray] = {}
+    for fraud_type, model in models.items():
+        cols = FEATURE_SETS[fraud_type]
+        X = features_df[cols].fillna(0)
+        raw_scores = model.decision_function(X)
+        per_model_scores[fraud_type] = _normalize_scores(raw_scores)
+
+    # Combined trust score = element-wise minimum across all 3 models.
+    all_scores = np.stack(list(per_model_scores.values()), axis=0)
+    trust_scores: np.ndarray = np.min(all_scores, axis=0)
+
+    # Determine primary fraud type per row.
+    fraud_types = _determine_fraud_type(per_model_scores, trust_scores)
+
+    # Build 5-tuples for bulk_insert:
+    # (log_timestamp, publisher_id, model_name, fraud_type, score)
+    timestamps = features_df["bucket_timestamp"].tolist()
     log_tuples: list[tuple] = [
         (
-            row["bucket_timestamp"],
+            timestamps[i],
             publisher_id,
             MODEL_NAME,
-            float(row["trust_score"]),
+            fraud_types[i],
+            round(float(trust_scores[i]), 2),
         )
-        for _, row in predictions.iterrows()
+        for i in range(len(trust_scores))
     ]
 
     logs_repo = ModelLogsRepository(session)
     logs_repo.bulk_insert(log_tuples)
+
+    # Update anomaly_periods for the most recent timestamp only
+    # (incremental processing – one log at a time).
+    latest_idx = len(trust_scores) - 1
+    process_new_log(
+        session=session,
+        publisher_id=publisher_id,
+        campaign_id=campaign_id,
+        timestamp=timestamps[latest_idx],
+        score=float(trust_scores[latest_idx]),
+    )
+
     return len(log_tuples)
 
 
@@ -195,24 +305,30 @@ def step_ml_inference(
 # ---------------------------------------------------------------------------
 
 
-def _try_load_model(path: str) -> Any | None:
-    """Attempt to load a pre-trained model. Returns None on failure."""
-    try:
-        from app.ml._isolation_forest import load_model
+def _try_load_models() -> dict[str, Any] | None:
+    """Attempt to load all 3 pre-trained fraud-detection models.
 
-        model = load_model(path)
-        logger.info("Loaded ML model from %s", path)
-        return model
-    except FileNotFoundError:
-        logger.warning(
-            "No ML model found at %s – inference step will be skipped until "
-            "the ML team delivers a trained model.",
-            path,
-        )
-        return None
-    except Exception:
-        logger.exception("Failed to load ML model from %s", path)
-        return None
+    Returns a dict mapping fraud_type -> sklearn model, or None if any
+    model is missing or fails to load.
+    """
+    loaded: dict[str, Any] = {}
+    for fraud_type, path in MODEL_PATHS.items():
+        try:
+            loaded[fraud_type] = joblib.load(path)
+            logger.info("Loaded %s model from %s", fraud_type, path)
+        except FileNotFoundError:
+            logger.warning(
+                "Model not found: %s – ML inference will be skipped "
+                "until all 3 models are available.",
+                path,
+            )
+            return None
+        except Exception:
+            logger.exception("Failed to load model from %s", path)
+            return None
+
+    logger.info("All %d ML models loaded successfully", len(loaded))
+    return loaded
 
 
 # ---------------------------------------------------------------------------
@@ -250,8 +366,8 @@ def run(
     )
     logger.info("  publishers: %d", len(publisher_catalog))
 
-    # Attempt to load the pre-trained model once at startup.
-    model = _try_load_model(MODEL_PATH)
+    # Attempt to load the 3 pre-trained models once at startup.
+    models = _try_load_models()
 
     current_sim_time = datetime.now(timezone.utc).replace(second=0, microsecond=0)
     tick_count = 0
@@ -302,22 +418,22 @@ def run(
                         )
 
                     # --- Step 3: ML inference (every N ticks) -----------------
-                    if model is not None and tick_count % ml_every_n == 0:
+                    if models is not None and tick_count % ml_every_n == 0:
                         scored = step_ml_inference(
                             session,
                             pub_id,
                             camp_id,
                             current_sim_time,
-                            model,
+                            models,
                         )
                         logger.info(
                             "  [ML]       %s: %d prediction(s) logged",
                             name,
                             scored,
                         )
-                    elif model is None and tick_count % ml_every_n == 0:
+                    elif models is None and tick_count % ml_every_n == 0:
                         logger.debug(
-                            "  [ML]       %s: no model loaded, skipping",
+                            "  [ML]       %s: models not loaded, skipping",
                             name,
                         )
 
