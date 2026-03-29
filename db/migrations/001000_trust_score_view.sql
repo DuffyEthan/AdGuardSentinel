@@ -19,7 +19,7 @@ SELECT
 
     MAX(log_timestamp) AS last_calculated
 
-FROM Model_Logs
+FROM model_logs
 WHERE log_timestamp >= NOW() - INTERVAL '24 hours'
 GROUP BY publisher_id;--, model_name;
 
