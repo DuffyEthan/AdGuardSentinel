@@ -1,16 +1,17 @@
 import uuid
 
 from fastapi import FastAPI, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timezone, timedelta
 from app.db.session import get_session
 
 from app.db import SessionLocal
-from app.db.models import ModelLogs
-from app.db.models import RawMetrics
+from app.db.models import ModelLogs, Campaigns
+from app.db.models import RawMetrics, Publishers
 from app.repositories.model_logs_repository import ModelLogsRepository
 from app.repositories.raw_metrics_repository import RawMetricsRepository
 from app.repositories.sentinel_repository import SentinelRepository
-from app.fastapi.services.sentinel_service import sentinel_service
+from app.fastapi.services import sentinel_service
 from app.fastapi.services import anomaly_periods_service
 
 from app.ml._isolation_forest import run_full_pipeline
@@ -22,6 +23,13 @@ import os
 from sqlalchemy.orm import sessionmaker
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/")
@@ -54,6 +62,24 @@ def model_logs_get_between(
     return res
 
 
+@app.get("/publishers")
+def get_publishers(session: Session = Depends(get_session)):
+    rows = session.query(Publishers).all()
+    result = []
+    for pub in rows:
+        campaign = (
+            session.query(Campaigns)
+            .filter(Campaigns.publisher_id == pub.publisher_id)
+            .first()
+        )
+        result.append({
+            "publisher_name": pub.publisher_name,
+            "publisher_id": str(pub.publisher_id),
+            "campaign_id": str(campaign.campaign_id) if campaign else None,
+        })
+    return result
+
+
 @app.get("/raw-metrics/get-last-n-before")
 def raw_metrics_get_last_n_before(
     t: datetime,
@@ -62,9 +88,20 @@ def raw_metrics_get_last_n_before(
     campaign_id: uuid.UUID | None = None,
     session: Session = Depends(get_session),
 ):
-    return RawMetricsRepository(session).get_last_n_before(
+    rows = RawMetricsRepository(session).get_last_n_before(
         t, n, publisher_id, campaign_id
     )
+    return [
+        {
+            "bucket_timestamp": r.bucket_timestamp.isoformat(),
+            "publisher_id": str(r.publisher_id),
+            "campaign_id": str(r.campaign_id),
+            "impression_count": r.impression_count,
+            "click_count": r.click_count,
+            "conversion_count": r.conversion_count,
+        }
+        for r in rows
+    ]
 
 
 @app.post("/pipeline/train-model")
