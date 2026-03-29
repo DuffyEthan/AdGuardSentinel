@@ -1,27 +1,46 @@
 -- migrate:up
 CREATE VIEW publisher_trust_score AS
+
+-- Step 1: Get a unique list of publishers
+WITH Publishers AS (
+    SELECT DISTINCT publisher_id FROM Model_Logs
+),
+-- Step 2: Get the newest timestamp for each publisher
+LatestLogs AS (
+    SELECT p.publisher_id, l.latest_ts
+    FROM Publishers p
+    CROSS JOIN LATERAL (
+        SELECT log_timestamp AS latest_ts
+        FROM Model_Logs m
+        WHERE m.publisher_id = p.publisher_id
+        ORDER BY log_timestamp DESC
+        LIMIT 1
+    ) l
+)
+-- Step 3: Fetch the last 24 hours of logs relative to that newest timestamp
 SELECT
-    publisher_id,
-    -- model_name,
-    -- TRUST SCORE:
-    -- The formula is: SUM(Score * Weight) / SUM(Weight)
+    ll.publisher_id,
+    ll.latest_ts as latest_ts,
+
     SUM(
-        ((1 - score) * 100) *
-        POWER(1 - (EXTRACT(EPOCH FROM (NOW() - log_timestamp)) / 86400), 2)
+        ((1 - logs.score) * 100) *
+        POWER(1 - (EXTRACT(EPOCH FROM (ll.latest_ts - logs.log_timestamp)) / 86400), 2)
     )
     /
-    -- We use NULLIF to prevent division by zero in the case
-    -- that all logs are exactly 24 hours old (i.e. weight = 0)
     NULLIF(
-        SUM(POWER(1 - (EXTRACT(EPOCH FROM (NOW() - log_timestamp)) / 86400), 2)),
+        SUM(POWER(1 - (EXTRACT(EPOCH FROM (ll.latest_ts - logs.log_timestamp)) / 86400), 2)),
         0
-    ) AS trust_score,
+    ) AS trust_score
 
-    MAX(log_timestamp) AS last_calculated
-
-FROM model_logs
-WHERE log_timestamp >= NOW() - INTERVAL '24 hours'
-GROUP BY publisher_id;--, model_name;
+FROM LatestLogs ll
+JOIN LATERAL (
+    SELECT score, log_timestamp
+    FROM Model_Logs m
+    WHERE m.publisher_id = ll.publisher_id
+      AND m.log_timestamp >= ll.latest_ts - INTERVAL '24 hours'
+      AND m.log_timestamp <= ll.latest_ts
+) logs ON true
+GROUP BY ll.publisher_id, ll.latest_ts;
 
 -- migrate:down
 DROP VIEW IF EXISTS publisher_trust_score;
