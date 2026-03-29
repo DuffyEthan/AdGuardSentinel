@@ -9,10 +9,7 @@ import joblib
 from sklearn.preprocessing import MinMaxScaler
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
-
-
-DATABASE_URL = "postgresql://postgres:123456789@db:5432/ad_metrics"
-engine = create_engine(DATABASE_URL)
+from app.db.session import get_session
 
 
 def fetch_raw_data(session: Session, start_date, end_date, publisher_id=None):
