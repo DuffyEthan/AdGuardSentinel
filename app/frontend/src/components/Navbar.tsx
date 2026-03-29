@@ -9,13 +9,13 @@ function Navbar() {
     <nav className="navbar">
       <div className="navbar-left">
         <button className="navbar-btn" onClick={() => navigate('/')}>
-          Home
+          Sentinel
+        </button>
+        <button className="navbar-btn" onClick={() => navigate('/publishers')}>
+          Publisher Details
         </button>
         <button className="navbar-btn" onClick={() => navigate('/dashboard')}>
-          Publisher Dashboard
-        </button>
-        <button className="navbar-btn" onClick={() => navigate('/sentinel')}>
-          Sentinel
+          Time Series
         </button>
       </div>
       <div className="navbar-right">

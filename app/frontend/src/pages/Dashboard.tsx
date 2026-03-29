@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useParams } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import TimeSeriesChart from '../components/TimeSeriesChart';
 import type { AnomalyEvent } from '../components/AnomalyArea';
@@ -144,7 +145,18 @@ const PUBLISHER_DATA = new Map<string, PublisherData>(
 );
 
 function Dashboard() {
-  const [selectedPublisher, setSelectedPublisher] = useState(CAMPAIGNS[0].publishers[0]);
+  const { campaign: campaignParam, publisher: publisherParam } = useParams();
+
+  const defaultPublisher = (() => {
+    if (campaignParam && publisherParam) {
+      const campaign = CAMPAIGNS.find(c => c.name === decodeURIComponent(campaignParam));
+      const pub = campaign?.publishers.find(p => p.name === decodeURIComponent(publisherParam));
+      if (pub) return pub;
+    }
+    return CAMPAIGNS[0].publishers[0];
+  })();
+
+  const [selectedPublisher, setSelectedPublisher] = useState(defaultPublisher);
 
   const { data, anomalies } = PUBLISHER_DATA.get(selectedPublisher.name)!;
 
