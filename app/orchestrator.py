@@ -53,7 +53,7 @@ logger = logging.getLogger("orchestrator")
 # Configuration
 # ---------------------------------------------------------------------------
 
-TICK_INTERVAL_SECONDS: float = 5.0
+TICK_INTERVAL_SECONDS: float = 2.0
 """Wall-clock seconds between ticks."""
 
 SIMULATED_INTERVAL_MINUTES: int = 5
@@ -205,7 +205,7 @@ def step_ml_inference(
     publisher_id: uuid.UUID,
     campaign_id: uuid.UUID,
     current_sim_time: datetime,
-    models: dict[str, Any],
+    models: dict[str, AnomalyDetection],
 ) -> int:
     """Run 3 fraud-detection models and write combined scores to model_logs.
 
@@ -254,16 +254,12 @@ def step_ml_inference(
     )
     df["bucket_timestamp"] = pd.to_datetime(df["bucket_timestamp"], utc=True)
 
-    # Compute engineered features required by all 3 models.
-    features_df = compute_features(df)
-
-    # Run each model and collect normalized scores.
+    # Run each model and collect normalized trust scores (model.predict handles
+    # feature engineering internally and returns scores already in [0, 1]).
     per_model_scores: dict[str, np.ndarray] = {}
     for fraud_type, model in models.items():
-        cols = FEATURE_SETS[fraud_type]
-        X = features_df[cols].fillna(0)
-        raw_scores = model.decision_function(X)
-        per_model_scores[fraud_type] = _normalize_scores(raw_scores)
+        pred_df = model.predict(df)
+        per_model_scores[fraud_type] = pred_df["trust_score"].values
 
     # Combined trust score = element-wise minimum across all 3 models.
     all_scores = np.stack(list(per_model_scores.values()), axis=0)
@@ -272,26 +268,24 @@ def step_ml_inference(
     # Determine primary fraud type per row.
     fraud_types = _determine_fraud_type(per_model_scores, trust_scores)
 
-    # Build 5-tuples for bulk_insert:
-    # (log_timestamp, publisher_id, model_name, fraud_type, score)
-    timestamps = features_df["bucket_timestamp"].tolist()
+    # Only log the latest row — ML runs every tick so each row is scored
+    # exactly once when it becomes the most recent entry in the window.
+    latest_idx = len(trust_scores) - 1
+    timestamps = df["bucket_timestamp"].tolist()
     log_tuples: list[tuple] = [
         (
-            timestamps[i],
+            timestamps[latest_idx],
             publisher_id,
             MODEL_NAME,
-            fraud_types[i],
-            round(float(trust_scores[i]), 2),
+            fraud_types[latest_idx],
+            round(float(trust_scores[latest_idx]), 2),
         )
-        for i in range(len(trust_scores))
     ]
 
     logs_repo = ModelLogsRepository(session)
     logs_repo.bulk_insert(log_tuples)
 
-    # Update anomaly_periods for the most recent timestamp only
-    # (incremental processing – one log at a time).
-    latest_idx = len(trust_scores) - 1
+    # Update anomaly_periods for the most recent timestamp.
     process_new_log(
         session=session,
         publisher_id=publisher_id,
@@ -308,7 +302,7 @@ def step_ml_inference(
 # ---------------------------------------------------------------------------
 
 
-def _try_load_models() -> dict[str, Any] | None:
+def _try_load_models() -> dict[str, AnomalyDetection] | None:
     """Attempt to load all 3 pre-trained fraud-detection models.
 
     Returns a dict mapping fraud_type -> sklearn model, or None if any
@@ -470,7 +464,7 @@ def run(
                         )
 
                     # --- Step 3: ML inference (every N ticks) -----------------
-                    if models is not None and tick_count % ml_every_n == 0:
+                    if models is not None and tick_count >= ML_MIN_ROWS:
                         scored = step_ml_inference(
                             session,
                             pub_id,
