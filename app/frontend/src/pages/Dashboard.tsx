@@ -75,7 +75,7 @@ function Dashboard() {
   const fetchMetrics = useCallback(() => {
     if (!selected) return;
     const params = new URLSearchParams({
-      t: new Date().toISOString(),
+      t: '9999-12-31T23:59:59Z',
       n: String(N_POINTS),
       publisher_id: selected.publisher_id,
       campaign_id: selected.campaign_id,

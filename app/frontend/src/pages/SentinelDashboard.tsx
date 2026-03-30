@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useSentinelData } from '../context/SentinelDataContext';
 import StatCard from '../components/sentinel/StatCard';
 import PublisherTable from '../components/sentinel/PublisherTable';
 import TrustDistributionChart from '../components/sentinel/TrustDistributionChart';
@@ -33,7 +34,6 @@ const DEMO_FRAUD_EVENTS: FraudEvent[] = [
   { day: 'Tue', events: 19 },
 ];
 
-const DEMO_OVERVIEW: PublisherOverview = { trusted: 77, watchlist: 7, fraudulent: 16 };
 
 const DEMO_INIT_MESSAGES: ChatMessage[] = [
   {
@@ -59,29 +59,57 @@ const DEMO_INIT_MESSAGES: ChatMessage[] = [
 // ────────────────────────────────────────────────────────────────────────────
 
 export interface SentinelDashboardProps {
-  /** Summary stats shown in the top bar */
-  publishersMonitored?: number;
-  suspiciousPublishers?: number;
-  avgNetworkCtr?: number;
   fraudEventsLast24h?: number;
-  /** Charts data */
   trustBuckets?: TrustBucket[];
   fraudEvents?: FraudEvent[];
-  /** Right-column data */
-  overview?: PublisherOverview;
 }
 
 function SentinelDashboard({
-  publishersMonitored  = 150,
-  suspiciousPublishers = 12,
-  avgNetworkCtr        = 1.9,
-  fraudEventsLast24h   = 17,
-  trustBuckets         = DEMO_TRUST_BUCKETS,
-  fraudEvents          = DEMO_FRAUD_EVENTS,
-  overview             = DEMO_OVERVIEW,
+  fraudEventsLast24h = 17,
+  trustBuckets       = DEMO_TRUST_BUCKETS,
+  fraudEvents        = DEMO_FRAUD_EVENTS,
 }: SentinelDashboardProps) {
   const navigate = useNavigate();
-  const [selectedPublisher, setSelectedPublisher] = useState('');
+  const { publishers } = useSentinelData();
+  const [selectedPublisher, setSelectedPublisher] = useState(''); // used by SentinelAssistant when re-enabled
+
+  const publishersMonitored = publishers.length;
+  const suspiciousPublishers = useMemo(
+    () => publishers.filter(p => p.status !== 'Trusted').length,
+    [publishers]
+  );
+  const avgNetworkCtr = useMemo(() => {
+    if (publishers.length === 0) return 0;
+    const sum = publishers.reduce((acc, p) => acc + p.ctr, 0);
+    return Math.round((sum / publishers.length) * 10) / 10;
+  }, [publishers]);
+  const overview: PublisherOverview = useMemo(() => ({
+    trusted:    publishers.filter(p => p.status === 'Trusted').length,
+    watchlist:  publishers.filter(p => p.status === 'Watchlist').length,
+    fraudulent: publishers.filter(p => p.status !== 'Trusted' && p.status !== 'Watchlist').length,
+  }), [publishers]);
+
+  const computedTrustBuckets: TrustBucket[] = useMemo(() => {
+    if (publishers.length === 0) return trustBuckets;
+    const buckets: TrustBucket[] = [
+      { range: '0–20',   count: 0 },
+      { range: '20–40',  count: 0 },
+      { range: '40–60',  count: 0 },
+      { range: '60–80',  count: 0 },
+      { range: '80–90',  count: 0 },
+      { range: '90–100', count: 0 },
+    ];
+    for (const p of publishers) {
+      const s = p.trustScore;
+      if      (s < 20)  buckets[0].count++;
+      else if (s < 40)  buckets[1].count++;
+      else if (s < 60)  buckets[2].count++;
+      else if (s < 80)  buckets[3].count++;
+      else if (s < 90)  buckets[4].count++;
+      else              buckets[5].count++;
+    }
+    return buckets;
+  }, [publishers, trustBuckets]);
   const [messages, setMessages]                   = useState<ChatMessage[]>(DEMO_INIT_MESSAGES);
 
   function handleShowDetails(_pub: PublisherRow) {
@@ -147,7 +175,7 @@ function SentinelDashboard({
             onShowDetails={handleShowDetails}
           />
           <div className="sentinel-charts-row">
-            <TrustDistributionChart data={trustBuckets} />
+            <TrustDistributionChart data={computedTrustBuckets} />
             <FraudEventsChart data={fraudEvents} />
           </div>
         </div>
