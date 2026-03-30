@@ -12,10 +12,10 @@ import { renderAnomalyAreas } from './AnomalyArea';
 import type { AnomalyEvent } from './AnomalyArea';
 
 interface DataPoint {
-  x: number;
-  impressions: number;
-  clicks: number;
-  conversions: number;
+  x: number; // Unix ms timestamp
+  impression_count: number;
+  click_count: number;
+  conversion_count: number;
 }
 
 interface TimeSeriesChartProps {
@@ -75,12 +75,13 @@ function TimeSeriesChart({ data, publisher, anomalies = [] }: TimeSeriesChartPro
           <XAxis
             dataKey="x"
             type="number"
-            domain={[0, 99]}
+            scale="time"
+            domain={['dataMin', 'dataMax']}
             stroke={colors.axis}
             tick={{ fill: colors.axis, fontSize: 12 }}
-            tickCount={10}
-            tickFormatter={(value) => value.toFixed(0)}
-            label={{ value: 'Time Step', position: 'bottom', fill: colors.axis, offset: 10 }}
+            tickCount={8}
+            tickFormatter={(value) => new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            label={{ value: 'Time', position: 'bottom', fill: colors.axis, offset: 10 }}
           />
           <YAxis
             stroke={colors.axis}
@@ -97,18 +98,18 @@ function TimeSeriesChart({ data, publisher, anomalies = [] }: TimeSeriesChartPro
             }}
             formatter={(value, name) => {
               const labels: Record<string, string> = {
-                impressions: 'Impressions',
-                clicks: 'Clicks',
-                conversions: 'Conversions',
+                impression_count: 'Impressions',
+                click_count: 'Clicks',
+                conversion_count: 'Conversions',
               };
               return [(value as number).toFixed(0), labels[name as string] ?? name];
             }}
-            labelFormatter={(label) => `t: ${label}`}
+            labelFormatter={(label) => new Date(label as number).toLocaleString()}
           />
           {renderAnomalyAreas(anomalies)}
           <Line
             type="monotone"
-            dataKey="impressions"
+            dataKey="impression_count"
             stroke={colors.line1}
             strokeWidth={2.5}
             dot={false}
@@ -116,7 +117,7 @@ function TimeSeriesChart({ data, publisher, anomalies = [] }: TimeSeriesChartPro
           />
           <Line
             type="monotone"
-            dataKey="clicks"
+            dataKey="click_count"
             stroke={colors.line2}
             strokeWidth={2.5}
             dot={false}
@@ -124,7 +125,7 @@ function TimeSeriesChart({ data, publisher, anomalies = [] }: TimeSeriesChartPro
           />
           <Line
             type="monotone"
-            dataKey="conversions"
+            dataKey="conversion_count"
             stroke={colors.line3}
             strokeWidth={2.5}
             dot={false}
