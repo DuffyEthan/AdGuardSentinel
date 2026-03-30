@@ -86,7 +86,7 @@ function TimeSeriesChart({ data, publisher, anomalies = [] }: TimeSeriesChartPro
           />
           <YAxis
             scale="log"
-            domain={[1, 'auto']}
+            domain={[1, (max: number) => max * 2]}
             stroke={colors.axis}
             tick={{ fill: colors.axis, fontSize: 12 }}
             allowDataOverflow

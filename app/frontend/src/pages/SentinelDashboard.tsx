@@ -164,7 +164,7 @@ function SentinelDashboard({
         <StatCard label="Publishers Monitored"   value={publishersMonitored}  variant="teal" />
         <StatCard label="Suspicious Publishers"  value={suspiciousPublishers} variant="orange" />
         <StatCard label="Avg Network CTR"        value={`${avgNetworkCtr}%`}  variant="orange" />
-        <StatCard label="Fraud Events (Last 24h)" value={fraudEventsLast24h}  variant="red" />
+        {/* <StatCard label="Fraud Events (Last 24h)" value={fraudEventsLast24h}  variant="red" /> */}
       </div>
 
       {/* ── Main content ──────────────────────────────────────────────────── */}
@@ -176,7 +176,7 @@ function SentinelDashboard({
           />
           <div className="sentinel-charts-row">
             <TrustDistributionChart data={computedTrustBuckets} />
-            <FraudEventsChart data={fraudEvents} />
+            {/* <FraudEventsChart data={fraudEvents} /> */}
           </div>
         </div>
 
