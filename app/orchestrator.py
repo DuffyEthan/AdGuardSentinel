@@ -41,7 +41,7 @@ from app.db import SessionLocal, engine
 from app.db.models import Base, Campaigns, Publishers
 from app.fastapi.services.anomaly_periods_service import process_new_log
 from app.fastapi.services.derived_metrics_service import compute_and_store
-from app.ml._isolation_forest import compute_features
+from app.ml._isolation_forest import *
 from app.ml.batch_data_generator import upsert_raw_metrics
 from app.ml.publishers import campaign_catalog, publisher_catalog
 from app.repositories.model_logs_repository import ModelLogsRepository
