@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import type { PublisherRow, PublisherStatus } from '../types/sentinel';
 
 const API_BASE = 'http://localhost:8000';
@@ -22,12 +22,19 @@ interface ApiPublisher {
   campaign_name: string | null;
 }
 
-function computeStatus(trustScore: number, fraudType: string | null): PublisherStatus {
-  if (trustScore >= 70) return 'Trusted';
+function computeStatus(
+  trustScore: number,
+  fraudType: string | null,
+  anomalyScore: number,
+  prevFraudType: string | null,
+): PublisherStatus {
+  if (trustScore >= 60) return 'Trusted';
   if (trustScore >= 40) return 'Watchlist';
-  if (fraudType === 'ctr') return 'CTR Fraud';
-  if (fraudType === 'impression') return 'Impression Fraud';
-  if (fraudType === 'click_injection') return 'Click Injection';
+  const effectiveFraudType =
+    trustScore < 40 && anomalyScore > 40 && prevFraudType ? prevFraudType : fraudType;
+  if (effectiveFraudType === 'ctr_fraud') return 'CTR Fraud';
+  if (effectiveFraudType === 'impression_fraud') return 'Impression Fraud';
+  if (effectiveFraudType === 'click_injection') return 'Click Injection';
   return 'Fraud';
 }
 
@@ -41,6 +48,8 @@ export function SentinelDataProvider({ children }: { children: ReactNode }) {
   const [publishers, setPublishers] = useState<PublisherRow[]>([]);
   // Campaign info is stable — fetch once and keep in a map keyed by publisher_id.
   const [campaignInfo, setCampaignInfo] = useState<Map<string, { campaignId: string | null; campaignName: string | null }>>(new Map());
+  // Last known specific fraud type per publisher, for status continuity.
+  const prevFraudTypes = useRef<Map<string, string>>(new Map());
 
   useEffect(() => {
     fetch(`${API_BASE}/publishers`)
@@ -70,7 +79,13 @@ export function SentinelDataProvider({ children }: { children: ReactNode }) {
             anomalyScore: p.anomaly_score,
             ctr: p.ctr,
             cvr: p.cvr,
-            status: computeStatus(p.trust_score, p.fraud_type),
+            status: (() => {
+            const prev = prevFraudTypes.current.get(p.publisher_id) ?? null;
+            if (p.fraud_type && p.fraud_type !== 'none') {
+              prevFraudTypes.current.set(p.publisher_id, p.fraud_type);
+            }
+            return computeStatus(p.trust_score, p.fraud_type, p.anomaly_score, prev);
+          })(),
             lastAlert: '—',
           };
         }));

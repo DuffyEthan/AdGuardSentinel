@@ -68,6 +68,9 @@ ML_WINDOW_SIZE: int = 250
 ML_MIN_ROWS: int = 100
 """Minimum rows required before inference is attempted."""
 
+WARMUP_TICKS: int = 100
+"""Number of ticks to run instantly at startup (no sleep) to pre-seed data."""
+
 MODEL_PATHS: dict[str, str] = {
     "ctr_fraud": "app/ml/models/ctr_fraud_detector_v2.joblib",
     "impression_fraud": "app/ml/models/impression_fraud_detector_v2.joblib",
@@ -417,6 +420,30 @@ def run(
 
     current_sim_time = datetime.now(timezone.utc).replace(second=0, microsecond=0)
     tick_count = 0
+
+    # ── Warmup: generate WARMUP_TICKS rows per publisher with no sleep ──────
+    logger.info("Warmup: generating %d ticks with no sleep...", WARMUP_TICKS)
+    for _ in range(WARMUP_TICKS):
+        tick_count += 1
+        session: Session = SessionLocal()
+        try:
+            for pub_id, info in publisher_catalog.items():
+                camp_id: uuid.UUID = info["campaign_id"]
+                generator = info["generator"]
+                try:
+                    step_generate_data(session, pub_id, camp_id, generator, current_sim_time)
+                    step_derived_metrics(session, pub_id, camp_id, current_sim_time)
+                except Exception:
+                    logger.exception("  [warmup] Error for %s at tick %d", info["name"], tick_count)
+            session.commit()
+        except Exception:
+            session.rollback()
+            logger.exception("Warmup tick %d failed, rolled back", tick_count)
+        finally:
+            session.close()
+        current_sim_time += timedelta(minutes=SIMULATED_INTERVAL_MINUTES)
+    logger.info("Warmup complete (%d ticks). Entering normal loop.", WARMUP_TICKS)
+    # ────────────────────────────────────────────────────────────────────────
 
     while True:
         tick_count += 1

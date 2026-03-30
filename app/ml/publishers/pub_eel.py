@@ -11,7 +11,7 @@ DataPacket = tuple[datetime, int, int, int]
 def normal_behavior(settings: InternalState) -> DataPacket:
     """Larger publisher, normal behaviour"""
     timestamp = settings.get('timestamp', datetime.now())
-    impressions = np.random.poisson(10000)
+    impressions = max(1, int(np.random.poisson(10000) * np.random.lognormal(0, 0.25)))
     clicks = np.random.poisson(550)
     conversions = np.random.poisson(45)
     return (timestamp, impressions, clicks, conversions)
@@ -20,7 +20,7 @@ def normal_behavior(settings: InternalState) -> DataPacket:
 def ctr_fraud_behavior(settings: InternalState) -> DataPacket:
     """CTR inflation — 3-6x clicks, impressions and conversions unchanged"""
     timestamp = settings.get('timestamp', datetime.now())
-    impressions = np.random.poisson(10000)
+    impressions = max(1, int(np.random.poisson(10000) * np.random.lognormal(0, 0.25)))
     multiplier = np.random.randint(3, 7)
     clicks = np.random.poisson(550) * multiplier
     conversions = np.random.poisson(45)

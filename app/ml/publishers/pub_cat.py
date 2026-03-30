@@ -15,7 +15,7 @@ def normal_behavior(settings: InternalState) -> DataPacket:
     timestamp = settings.get('timestamp', datetime.now())
     
     # different values from spy publisher which has also normal behaviour
-    impressions = np.random.poisson(7500)
+    impressions = max(1, int((np.random.poisson(7500)) * np.random.lognormal(0, 0.25)))
     clicks = np.random.poisson(400)
     conversions = np.random.poisson(32)
     

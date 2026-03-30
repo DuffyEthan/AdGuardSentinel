@@ -12,7 +12,7 @@ from app.repositories.base import BaseRepository
 # model) falls below this value, i.e. anomaly_score = 1 - trust >= 0.7.
 TRUST_THRESHOLD = 0.3          # below this → suspicious
 ROLLING_WINDOW_HOURS = 24      # look-back window for the weighted average
-DECAY_HALF_LIFE_HOURS = 6.0    # how quickly older scores lose weight
+DECAY_HALF_LIFE_HOURS = 2.0    # how quickly older scores lose weight
 
 
 class SentinelRepository(BaseRepository):

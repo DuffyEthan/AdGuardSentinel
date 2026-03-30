@@ -588,16 +588,17 @@ if __name__ == "__main__":
     df_features = compute_features(df)
     print(f"  Computed {len(df_features.columns)} features")
 
-    print("\n[3/5] Computing per-model contamination from Markov stationary distributions...")
-    rows_per_publisher = 200
-    total_rows = len(publisher_catalog) * rows_per_publisher
-    contamination: dict[str, float] = {'ctr_fraud': 0.0, 'impression_fraud': 0.0, 'click_injection': 0.0}
-    for pub_info in publisher_catalog.values():
-        for fraud_type, prob in pub_info['fraud_probabilities'].items():
-            contamination[fraud_type] += prob * rows_per_publisher / total_rows
-    print(f"     ctr_fraud:       {contamination['ctr_fraud']:.4f}")
-    print(f"     impression_fraud:{contamination['impression_fraud']:.4f}")
-    print(f"     click_injection: {contamination['click_injection']:.4f}")
+    # print("\n[3/5] Computing per-model contamination from Markov stationary distributions...")
+    # rows_per_publisher = 200
+    # total_rows = len(publisher_catalog) * rows_per_publisher
+    # contamination: dict[str, float] = {'ctr_fraud': 0.0, 'impression_fraud': 0.0, 'click_injection': 0.0}
+    # for pub_info in publisher_catalog.values():
+    #     for fraud_type, prob in pub_info['fraud_probabilities'].items():
+    #         contamination[fraud_type] += prob * rows_per_publisher / total_rows
+    # print(f"     ctr_fraud:       {contamination['ctr_fraud']:.4f}")
+    # print(f"     impression_fraud:{contamination['impression_fraud']:.4f}")
+    # print(f"     click_injection: {contamination['click_injection']:.4f}")
+    contamination = 0.04
 
     predictions, (ctr_model, impression_model, click_model) = train_multiple_detection_model(
         df_features,
