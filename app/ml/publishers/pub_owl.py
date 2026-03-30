@@ -66,3 +66,6 @@ owl_graph = {
 }
 # create the publisher using MarkovDataGenerator
 pub_owl = MarkovDataGenerator.from_dict(owl_graph, "normal")
+
+# Stationary fraud fraction: π(ctr_fraud) = p/(p+q) = 0.05/(0.05+0.15) = 0.25
+FRAUD_STATE_PROBABILITY = {'ctr_fraud': 0.25, 'impression_fraud': 0.0, 'click_injection': 0.0}

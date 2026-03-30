@@ -1,38 +1,24 @@
 import { useNavigate } from 'react-router-dom';
+import { useSentinelData } from '../context/SentinelDataContext';
 import type { PublisherStatus } from '../types/sentinel';
-
-interface PublisherCampaignRow {
-  publisher: string;
-  campaign: string;
-  trustScore: number;
-  ctr: number;
-  anomalyScore: number;
-  status: PublisherStatus;
-}
-
-const DEMO_ROWS: PublisherCampaignRow[] = [
-  { publisher: 'SPY', campaign: 'Campaign Alpha', trustScore: 91, ctr: 1.2, anomalyScore: 0.08, status: 'Trusted' },
-  { publisher: 'CAT', campaign: 'Campaign Alpha', trustScore: 58, ctr: 2.8, anomalyScore: 0.48, status: 'Watchlist' },
-  { publisher: 'DOG', campaign: 'Campaign Beta',  trustScore: 33, ctr: 8.3, anomalyScore: 0.81, status: 'Suspicious' },
-  { publisher: 'OWL', campaign: 'Campaign Beta',  trustScore: 20, ctr: 7.6, anomalyScore: 0.92, status: 'Zero Conversions' },
-  { publisher: 'FOX', campaign: 'Campaign Beta',  trustScore: 12, ctr: 9.1, anomalyScore: 0.96, status: 'Bot-Like Activity' },
-];
 
 function statusBadgeClass(status: PublisherStatus): string {
   switch (status) {
-    case 'Trusted':           return 'status-badge status-badge--trusted';
-    case 'Watchlist':         return 'status-badge status-badge--watchlist';
-    case 'Suspicious':        return 'status-badge status-badge--suspicious';
-    case 'Zero Conversions':  return 'status-badge status-badge--zero-conversions';
-    case 'Bot-Like Activity': return 'status-badge status-badge--bot-like';
+    case 'Trusted':          return 'status-badge status-badge--trusted';
+    case 'Watchlist':        return 'status-badge status-badge--watchlist';
+    case 'CTR Fraud':
+    case 'Impression Fraud':
+    case 'Click Injection':
+    case 'Fraud':            return 'status-badge status-badge--fraud';
   }
 }
 
 function PublisherDetails() {
   const navigate = useNavigate();
+  const { publishers } = useSentinelData();
 
-  function handleViewTimeSeries(row: PublisherCampaignRow) {
-    navigate(`/dashboard/${encodeURIComponent(row.campaign)}/${encodeURIComponent(row.publisher)}`);
+  function handleViewTimeSeries(publisherName: string, campaignName: string | null) {
+    navigate(`/dashboard/${encodeURIComponent(campaignName ?? '')}/${encodeURIComponent(publisherName)}`);
   }
 
   return (
@@ -54,25 +40,25 @@ function PublisherDetails() {
             </tr>
           </thead>
           <tbody>
-            {DEMO_ROWS.map(row => (
-              <tr key={`${row.publisher}-${row.campaign}`}>
-                <td className="pub-name">{row.publisher}</td>
-                <td>{row.campaign}</td>
+            {publishers.map(pub => (
+              <tr key={pub.id}>
+                <td className="pub-name">{pub.name}</td>
+                <td>{pub.campaignName ?? '—'}</td>
                 <td>
-                  <span className={statusBadgeClass(row.status)}>
-                    {row.status}
+                  <span className={statusBadgeClass(pub.status)}>
+                    {pub.status}
                   </span>
                 </td>
-                <td><strong>{row.trustScore}</strong></td>
-                <td>{row.ctr.toFixed(1)}%</td>
+                <td><strong>{pub.trustScore}</strong></td>
+                <td>{pub.ctr.toFixed(1)}%</td>
                 <td>
-                  {row.anomalyScore >= 0.5 && <span className="anomaly-arrow">▲ </span>}
-                  {row.anomalyScore.toFixed(2)}
+                  {pub.anomalyScore >= 0.5 && <span className="anomaly-arrow">▲ </span>}
+                  {pub.anomalyScore.toFixed(2)}
                 </td>
                 <td>
                   <button
                     className="btn btn--inline"
-                    onClick={() => handleViewTimeSeries(row)}
+                    onClick={() => handleViewTimeSeries(pub.name, pub.campaignName)}
                   >
                     View Time Series &rsaquo;
                   </button>

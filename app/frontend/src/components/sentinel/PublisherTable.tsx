@@ -1,36 +1,46 @@
+import { useState } from 'react';
+import { useSentinelData } from '../../context/SentinelDataContext';
 import type { PublisherRow, PublisherStatus } from '../../types/sentinel';
 
 interface PublisherTableProps {
-  publishers: PublisherRow[];
-  sortBy: string;
-  onSortChange: (field: string) => void;
   onShowDetails: (publisher: PublisherRow) => void;
 }
 
-const STATUS_SORT_FIELDS = [
+const SORT_FIELDS = [
   { value: 'trustScore', label: 'Trust Score' },
-  { value: 'ctr', label: 'CTR' },
+  { value: 'ctr',        label: 'CTR' },
   { value: 'anomalyScore', label: 'Anomaly Score' },
-  { value: 'name', label: 'Name' },
+  { value: 'name',       label: 'Name' },
 ];
 
 function statusClass(status: PublisherStatus): string {
   switch (status) {
     case 'Trusted':          return 'trusted';
     case 'Watchlist':        return 'watchlist';
-    case 'Suspicious':       return 'suspicious';
-    case 'Zero Conversions': return 'zero-conversions';
-    case 'Bot-Like Activity':return 'bot-like';
+    case 'CTR Fraud':
+    case 'Impression Fraud':
+    case 'Click Injection':
+    case 'Fraud':            return 'fraud';
   }
 }
 
 function rowIcon(status: PublisherStatus) {
-  if (status === 'Bot-Like Activity') return <span className="pub-icon pub-icon--danger">!</span>;
-  if (status === 'Zero Conversions') return <span className="pub-icon pub-icon--warn">i</span>;
-  return <span className="pub-icon pub-icon--ok">✓</span>;
+  if (status === 'Trusted') return <span className="pub-icon pub-icon--ok">✓</span>;
+  if (status === 'Watchlist') return <span className="pub-icon pub-icon--warn">i</span>;
+  return <span className="pub-icon pub-icon--danger">!</span>;
 }
 
-function PublisherTable({ publishers, sortBy, onSortChange, onShowDetails }: PublisherTableProps) {
+function PublisherTable({ onShowDetails }: PublisherTableProps) {
+  const { publishers } = useSentinelData();
+  const [sortBy, setSortBy] = useState('trustScore');
+
+  const sorted = [...publishers].sort((a, b) => {
+    if (sortBy === 'name') return a.name.localeCompare(b.name);
+    const aVal = a[sortBy as keyof PublisherRow] as number;
+    const bVal = b[sortBy as keyof PublisherRow] as number;
+    return bVal - aVal;
+  });
+
   return (
     <div className="panel">
       <div className="pub-table-header">
@@ -40,9 +50,9 @@ function PublisherTable({ publishers, sortBy, onSortChange, onShowDetails }: Pub
           <select
             className="sort-select"
             value={sortBy}
-            onChange={e => onSortChange(e.target.value)}
+            onChange={e => setSortBy(e.target.value)}
           >
-            {STATUS_SORT_FIELDS.map(f => (
+            {SORT_FIELDS.map(f => (
               <option key={f.value} value={f.value}>{f.label}</option>
             ))}
           </select>
@@ -63,7 +73,7 @@ function PublisherTable({ publishers, sortBy, onSortChange, onShowDetails }: Pub
           </tr>
         </thead>
         <tbody>
-          {publishers.map(pub => (
+          {sorted.map(pub => (
             <tr key={pub.id}>
               <td>{rowIcon(pub.status)}</td>
               <td className="pub-name">{pub.name}</td>
@@ -86,10 +96,10 @@ function PublisherTable({ publishers, sortBy, onSortChange, onShowDetails }: Pub
       </table>
 
       <div className="pub-table-footer">
-        <span className="sort-label">Sort by: <strong>{STATUS_SORT_FIELDS.find(f => f.value === sortBy)?.label}</strong></span>
+        <span className="sort-label">Sort by: <strong>{SORT_FIELDS.find(f => f.value === sortBy)?.label}</strong></span>
         <button
           className="btn btn--inline"
-          onClick={() => publishers.length > 0 && onShowDetails(publishers[0])}
+          onClick={() => sorted.length > 0 && onShowDetails(sorted[0])}
         >
           Show Details &rsaquo;
         </button>

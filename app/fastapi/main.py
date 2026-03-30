@@ -164,10 +164,11 @@ def sentinel_stats(
     since: datetime | None = None,
     session: Session = Depends(get_session),
 ):
-    if since is None:
-        since = datetime.now(timezone.utc) - timedelta(hours=24)
-
     repo = SentinelRepository(session)
+    sim_time = repo.get_sim_time()
+    if since is None:
+        since = sim_time - timedelta(hours=24)
+
     return {
         "publisher_count": repo.get_publisher_count(),
         "suspicious_publisher_count": repo.get_suspicious_publisher_count(since),
@@ -182,10 +183,10 @@ def sentinel_publishers(
     as_of: datetime | None = None,
     session: Session = Depends(get_session),
 ):
-    if as_of is None:
-        as_of = datetime.now(timezone.utc)
-
     repo = SentinelRepository(session)
+    if as_of is None:
+        as_of = repo.get_sim_time()
+
     return repo.get_publisher_trust_summary(as_of)
 
 
@@ -194,10 +195,10 @@ def sentinel_trust_distribution(
     as_of: datetime | None = None,
     session: Session = Depends(get_session),
 ):
-    if as_of is None:
-        as_of = datetime.now(timezone.utc)
-
     repo = SentinelRepository(session)
+    if as_of is None:
+        as_of = repo.get_sim_time()
+
     return repo.get_trust_score_distribution(as_of)
 
 
@@ -216,8 +217,9 @@ def sentinel_explain(
     as_of: datetime | None = None,
     session: Session = Depends(get_session),
 ):
+    repo = SentinelRepository(session)
     if as_of is None:
-        as_of = datetime.now(timezone.utc)
+        as_of = repo.get_sim_time()
 
     return sentinel_service.get_trust_score_explanation(session, publisher_id, as_of)
 
@@ -239,8 +241,9 @@ def sentinel_compare(
     as_of: datetime | None = None,
     session: Session = Depends(get_session),
 ):
+    repo = SentinelRepository(session)
     if as_of is None:
-        as_of = datetime.now(timezone.utc)
+        as_of = repo.get_sim_time()
 
     return sentinel_service.compare_publisher_to_network(session, publisher_id, as_of)
 

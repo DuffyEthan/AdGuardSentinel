@@ -14,17 +14,6 @@ import type {
   PublisherOverview,
 } from '../types/sentinel';
 
-// ─── Demo / placeholder data ────────────────────────────────────────────────
-// Replace these with real API props when connecting to the backend.
-
-const DEMO_PUBLISHERS: PublisherRow[] = [
-  { id: '1', name: 'Site_A', trustScore: 91, ctr: 1.2, cvr: 3.2, anomalyScore: 0.08, status: 'Trusted',          lastAlert: '—' },
-  { id: '2', name: 'Site_B', trustScore: 58, ctr: 2.8, cvr: 1.1, anomalyScore: 0.48, status: 'Watchlist',         lastAlert: '4h ago' },
-  { id: '3', name: 'Site_C', trustScore: 33, ctr: 8.3, cvr: 0.3, anomalyScore: 0.81, status: 'Suspicious',        lastAlert: '1h ago' },
-  { id: '4', name: 'Site_D', trustScore: 20, ctr: 7.6, cvr: 0.1, anomalyScore: 0.92, status: 'Zero Conversions',  lastAlert: '30m ago' },
-  { id: '5', name: 'Site_E', trustScore: 12, ctr: 9.1, cvr: 0.2, anomalyScore: 0.96, status: 'Bot-Like Activity', lastAlert: '10m ago' },
-];
-
 const DEMO_TRUST_BUCKETS: TrustBucket[] = [
   { range: '0–20',   count: 42 },
   { range: '20–40',  count: 31 },
@@ -75,8 +64,6 @@ export interface SentinelDashboardProps {
   suspiciousPublishers?: number;
   avgNetworkCtr?: number;
   fraudEventsLast24h?: number;
-  /** Table data */
-  publishers?: PublisherRow[];
   /** Charts data */
   trustBuckets?: TrustBucket[];
   fraudEvents?: FraudEvent[];
@@ -89,23 +76,13 @@ function SentinelDashboard({
   suspiciousPublishers = 12,
   avgNetworkCtr        = 1.9,
   fraudEventsLast24h   = 17,
-  publishers           = DEMO_PUBLISHERS,
   trustBuckets         = DEMO_TRUST_BUCKETS,
   fraudEvents          = DEMO_FRAUD_EVENTS,
   overview             = DEMO_OVERVIEW,
 }: SentinelDashboardProps) {
   const navigate = useNavigate();
-  const [sortBy, setSortBy]                       = useState('trustScore');
-  const [selectedPublisher, setSelectedPublisher] = useState(publishers[0]?.name ?? '');
+  const [selectedPublisher, setSelectedPublisher] = useState('');
   const [messages, setMessages]                   = useState<ChatMessage[]>(DEMO_INIT_MESSAGES);
-
-  // Sort publishers client-side; backend can also pre-sort via props
-  const sortedPublishers = [...publishers].sort((a, b) => {
-    if (sortBy === 'name') return a.name.localeCompare(b.name);
-    const aVal = a[sortBy as keyof PublisherRow] as number;
-    const bVal = b[sortBy as keyof PublisherRow] as number;
-    return bVal - aVal;
-  });
 
   function handleShowDetails(_pub: PublisherRow) {
     navigate('/publishers');
@@ -167,9 +144,6 @@ function SentinelDashboard({
         {/* Left column */}
         <div className="sentinel-left">
           <PublisherTable
-            publishers={sortedPublishers}
-            sortBy={sortBy}
-            onSortChange={setSortBy}
             onShowDetails={handleShowDetails}
           />
           <div className="sentinel-charts-row">

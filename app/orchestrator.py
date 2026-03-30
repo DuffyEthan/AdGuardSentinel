@@ -65,7 +65,7 @@ ML_INFERENCE_EVERY_N_TICKS: int = 50
 ML_WINDOW_SIZE: int = 250
 """Number of most-recent raw_metrics rows fed to the models."""
 
-ML_MIN_ROWS: int = 25
+ML_MIN_ROWS: int = 100
 """Minimum rows required before inference is attempted."""
 
 MODEL_PATHS: dict[str, str] = {

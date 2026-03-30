@@ -29,3 +29,6 @@ cat_graph = {
 }
 
 pub_cat = MarkovDataGenerator.from_dict(cat_graph, "normal")
+
+# Stationary fraud fractions — all zero (single normal state)
+FRAUD_STATE_PROBABILITY = {'ctr_fraud': 0.0, 'impression_fraud': 0.0, 'click_injection': 0.0}
