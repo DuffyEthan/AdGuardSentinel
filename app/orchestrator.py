@@ -338,37 +338,17 @@ def _try_load_models() -> dict[str, Any] | None:
 # Database initialisation
 # ---------------------------------------------------------------------------
 
-_HYPERTABLES = [
-    ("raw_metrics", "bucket_timestamp"),
-    ("model_logs", "log_timestamp"),
-    ("derived_metrics", "bucket_timestamp"),
-    ("anomaly_periods", "start_timestamp"),
-]
-
-
 def initialise_database() -> None:
     """Wipe all data and re-seed publishers and campaigns.
 
     Called once at orchestrator startup to guarantee a clean slate.
-    Tables are truncated (not dropped) so the schema — created by
-    ``Base.metadata.create_all`` on import — is preserved.
-    TimescaleDB hypertables are (re)created if they don't exist yet.
+    Tables are truncated (not dropped) so the schema is preserved.
+    Run ``docker-compose down -v`` once to clear a stale volume.
     """
     assert engine is not None, "DATABASE_URL is not configured."
 
     # Ensure all tables exist (no-op if already present).
     Base.metadata.create_all(bind=engine)
-
-    # Create hypertables for time-series tables (idempotent).
-    with engine.connect() as conn:
-        for table, time_col in _HYPERTABLES:
-            conn.execute(
-                text(
-                    f"SELECT create_hypertable('{table}', '{time_col}',"
-                    f" if_not_exists => TRUE, migrate_data => TRUE)"
-                )
-            )
-        conn.commit()
 
     # Truncate all data in dependency-safe order.
     with engine.connect() as conn:

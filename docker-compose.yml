@@ -27,7 +27,7 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
     volumes:
-      - .:/app
+      - .:/sweng26_group20-adguardanomalydetection
     depends_on:
       db:
         condition: service_healthy
@@ -42,7 +42,7 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
     volumes:
-      - .:/app
+      - .:/sweng26_group20-adguardanomalydetection
     depends_on:
       db:
         condition: service_healthy
