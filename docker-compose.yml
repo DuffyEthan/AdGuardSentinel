@@ -10,6 +10,11 @@ services:
     volumes:
       - db_data:/var/lib/postgresql/data
       - ./db/init:/seed:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     networks:
       app-network:
 
@@ -24,7 +29,8 @@ services:
     volumes:
       - .:/app
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     command: uvicorn app.fastapi.main:app --host 0.0.0.0 --port 8000 --reload
     networks:
       app-network:
@@ -38,21 +44,10 @@ services:
     volumes:
       - .:/app
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     command: python -m app.orchestrator
     restart: unless-stopped
-    networks:
-      app-network:
-
-  app:
-    build: .
-    env_file:
-      - ./.secrets/.env
-    depends_on:
-      - db
-    ports:
-      - "8501:8501"
-    command: ["streamlit", "run", "frontend/frontend.py"]
     networks:
       app-network:
 

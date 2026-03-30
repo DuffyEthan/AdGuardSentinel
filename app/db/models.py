@@ -35,7 +35,6 @@ class Publishers(Base):
     publisher_name: Mapped[str] = mapped_column(Text, nullable=False)
     publisher_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
 
-    campaigns: Mapped[list['Campaigns']] = relationship('Campaigns', back_populates='publisher')
     model_logs: Mapped[list['ModelLogs']] = relationship('ModelLogs', back_populates='publisher')
     anomaly_periods: Mapped[list['AnomalyPeriods']] = relationship('AnomalyPeriods', back_populates='publisher')
     derived_metrics: Mapped[list['DerivedMetrics']] = relationship('DerivedMetrics', back_populates='publisher')
@@ -55,16 +54,14 @@ class SchemaMigrations(Base):
 class Campaigns(Base):
     __tablename__ = 'campaigns'
     __table_args__ = (
-        ForeignKeyConstraint(['publisher_id'], ['publishers.publisher_id'], ondelete='CASCADE', name='campaigns_publisher_id_fkey'),
-        PrimaryKeyConstraint('campaign_id', name='campaigns_pkey')
+        PrimaryKeyConstraint('campaign_id', name='campaigns_pkey'),
     )
 
     campaign_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
-    publisher_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    campaign_name: Mapped[str] = mapped_column(Text, nullable=False)
     start_date: Mapped[datetime.datetime] = mapped_column(DateTime(True), nullable=False)
     end_date: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime(True))
 
-    publisher: Mapped['Publishers'] = relationship('Publishers', back_populates='campaigns')
     anomaly_periods: Mapped[list['AnomalyPeriods']] = relationship('AnomalyPeriods', back_populates='campaign')
     derived_metrics: Mapped[list['DerivedMetrics']] = relationship('DerivedMetrics', back_populates='campaign')
     model_reports: Mapped[list['ModelReports']] = relationship('ModelReports', back_populates='campaign')

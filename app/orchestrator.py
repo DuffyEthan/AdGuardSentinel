@@ -35,12 +35,15 @@ import numpy as np
 import pandas as pd
 from sqlalchemy.orm import Session
 
-from app.db import SessionLocal
+from sqlalchemy import text
+
+from app.db import SessionLocal, engine
+from app.db.models import Base, Campaigns, Publishers
 from app.fastapi.services.anomaly_periods_service import process_new_log
 from app.fastapi.services.derived_metrics_service import compute_and_store
 from app.ml._isolation_forest import compute_features
 from app.ml.batch_data_generator import upsert_raw_metrics
-from app.ml.publishers import publisher_catalog
+from app.ml.publishers import campaign_catalog, publisher_catalog
 from app.repositories.model_logs_repository import ModelLogsRepository
 from app.repositories.raw_metrics_repository import RawMetricsRepository
 
@@ -332,6 +335,74 @@ def _try_load_models() -> dict[str, Any] | None:
 
 
 # ---------------------------------------------------------------------------
+# Database initialisation
+# ---------------------------------------------------------------------------
+
+_HYPERTABLES = [
+    ("raw_metrics", "bucket_timestamp"),
+    ("model_logs", "log_timestamp"),
+    ("derived_metrics", "bucket_timestamp"),
+    ("anomaly_periods", "start_timestamp"),
+]
+
+
+def initialise_database() -> None:
+    """Wipe all data and re-seed publishers and campaigns.
+
+    Called once at orchestrator startup to guarantee a clean slate.
+    Tables are truncated (not dropped) so the schema — created by
+    ``Base.metadata.create_all`` on import — is preserved.
+    TimescaleDB hypertables are (re)created if they don't exist yet.
+    """
+    assert engine is not None, "DATABASE_URL is not configured."
+
+    # Ensure all tables exist (no-op if already present).
+    Base.metadata.create_all(bind=engine)
+
+    # Create hypertables for time-series tables (idempotent).
+    with engine.connect() as conn:
+        for table, time_col in _HYPERTABLES:
+            conn.execute(
+                text(
+                    f"SELECT create_hypertable('{table}', '{time_col}',"
+                    f" if_not_exists => TRUE, migrate_data => TRUE)"
+                )
+            )
+        conn.commit()
+
+    # Truncate all data in dependency-safe order.
+    with engine.connect() as conn:
+        conn.execute(text(
+            "TRUNCATE TABLE "
+            "model_logs, anomaly_periods, derived_metrics, model_reports, "
+            "raw_metrics, model_runs, campaigns, publishers "
+            "RESTART IDENTITY CASCADE"
+        ))
+        conn.commit()
+
+    # Seed campaigns and publishers.
+    with SessionLocal() as session:
+        for camp_id, info in campaign_catalog.items():
+            session.merge(Campaigns(
+                campaign_id=camp_id,
+                campaign_name=info["name"],
+                start_date=info["start_date"],
+            ))
+        for pub_id, info in publisher_catalog.items():
+            session.merge(Publishers(
+                publisher_id=pub_id,
+                publisher_name=info["name"],
+            ))
+        session.commit()
+
+    logger.info(
+        "Database initialised: %d campaign(s), %d publisher(s) seeded.",
+        len(campaign_catalog),
+        len(publisher_catalog),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Main loop
 # ---------------------------------------------------------------------------
 
@@ -358,6 +429,7 @@ def run(
     )
 
     logger.info("Orchestrator starting")
+    initialise_database()
     logger.info(
         "  tick_interval=%.1fs  sim_interval=%dmin  ml_every_n=%d",
         tick_interval,
