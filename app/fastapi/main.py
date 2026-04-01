@@ -67,15 +67,22 @@ def get_publishers(session: Session = Depends(get_session)):
     rows = session.query(Publishers).all()
     result = []
     for pub in rows:
-        campaign = (
-            session.query(Campaigns)
-            .filter(Campaigns.publisher_id == pub.publisher_id)
+        # Campaign is linked via raw_metrics (no direct publisher→campaign FK).
+        raw = (
+            session.query(RawMetrics)
+            .filter(RawMetrics.publisher_id == pub.publisher_id)
             .first()
         )
+        campaign_id = raw.campaign_id if raw else None
+        campaign = (
+            session.query(Campaigns).filter(Campaigns.campaign_id == campaign_id).first()
+            if campaign_id else None
+        )
         result.append({
-            "publisher_name": pub.publisher_name,
             "publisher_id": str(pub.publisher_id),
-            "campaign_id": str(campaign.campaign_id) if campaign else None,
+            "publisher_name": pub.publisher_name,
+            "campaign_id": str(campaign_id) if campaign_id else None,
+            "campaign_name": campaign.campaign_name if campaign else None,
         })
     return result
 
@@ -119,7 +126,8 @@ def train_model_endpoint(
 
 @app.get("/pipeline/results")
 def get_pipeline_results(
-    publisher_id: str,
+    publisher_id: uuid.UUID,
+    campaign_id: uuid.UUID,
     t1: datetime,
     t2: datetime,
     session: Session = Depends(get_session),
@@ -127,10 +135,10 @@ def get_pipeline_results(
     raw_metrics_repo = RawMetricsRepository(session)
     model_logs_repo = ModelLogsRepository(session)
 
-    all_raw_metrics = raw_metrics_repo.get_last_n_before(t2, 1000, publisher_id)
+    all_raw_metrics = raw_metrics_repo.get_last_n_before(t2, 1000, publisher_id, campaign_id)
     raw_metrics = [m for m in all_raw_metrics if t1 <= m.bucket_timestamp <= t2]
 
-    model_predictions_data = model_logs_repo.get_between(t1, t2, publisher_id)
+    model_predictions_data = model_logs_repo.get_between(t1, t2, publisher_id, campaign_id)
     model_predictions = []
     for pred_tuple in model_predictions_data:
         model_predictions.append(vars(pred_tuple[0]) | vars(pred_tuple[1]))
@@ -156,10 +164,11 @@ def sentinel_stats(
     since: datetime | None = None,
     session: Session = Depends(get_session),
 ):
-    if since is None:
-        since = datetime.now(timezone.utc) - timedelta(hours=24)
-
     repo = SentinelRepository(session)
+    sim_time = repo.get_sim_time()
+    if since is None:
+        since = sim_time - timedelta(hours=24)
+
     return {
         "publisher_count": repo.get_publisher_count(),
         "suspicious_publisher_count": repo.get_suspicious_publisher_count(since),
@@ -174,10 +183,10 @@ def sentinel_publishers(
     as_of: datetime | None = None,
     session: Session = Depends(get_session),
 ):
-    if as_of is None:
-        as_of = datetime.now(timezone.utc)
-
     repo = SentinelRepository(session)
+    if as_of is None:
+        as_of = repo.get_sim_time()
+
     return repo.get_publisher_trust_summary(as_of)
 
 
@@ -186,10 +195,10 @@ def sentinel_trust_distribution(
     as_of: datetime | None = None,
     session: Session = Depends(get_session),
 ):
-    if as_of is None:
-        as_of = datetime.now(timezone.utc)
-
     repo = SentinelRepository(session)
+    if as_of is None:
+        as_of = repo.get_sim_time()
+
     return repo.get_trust_score_distribution(as_of)
 
 
@@ -208,8 +217,9 @@ def sentinel_explain(
     as_of: datetime | None = None,
     session: Session = Depends(get_session),
 ):
+    repo = SentinelRepository(session)
     if as_of is None:
-        as_of = datetime.now(timezone.utc)
+        as_of = repo.get_sim_time()
 
     return sentinel_service.get_trust_score_explanation(session, publisher_id, as_of)
 
@@ -231,8 +241,9 @@ def sentinel_compare(
     as_of: datetime | None = None,
     session: Session = Depends(get_session),
 ):
+    repo = SentinelRepository(session)
     if as_of is None:
-        as_of = datetime.now(timezone.utc)
+        as_of = repo.get_sim_time()
 
     return sentinel_service.compare_publisher_to_network(session, publisher_id, as_of)
 

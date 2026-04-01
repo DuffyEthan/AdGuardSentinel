@@ -5,6 +5,7 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
+  Legend,
   ResponsiveContainer,
 } from 'recharts';
 import { useTheme } from '../context/ThemeContext';
@@ -84,10 +85,12 @@ function TimeSeriesChart({ data, publisher, anomalies = [] }: TimeSeriesChartPro
             label={{ value: 'Time', position: 'bottom', fill: colors.axis, offset: 10 }}
           />
           <YAxis
+            scale="log"
+            domain={[1, (max: number) => max * 2]}
             stroke={colors.axis}
             tick={{ fill: colors.axis, fontSize: 12 }}
-            domain={[0, (max: number) => Math.ceil(max)]}
-            label={{ value: 'Count', angle: -90, position: 'insideLeft', fill: colors.axis }}
+            allowDataOverflow
+            label={{ value: 'Count (log)', angle: -90, position: 'insideLeft', fill: colors.axis }}
           />
           <Tooltip
             contentStyle={{
@@ -106,6 +109,16 @@ function TimeSeriesChart({ data, publisher, anomalies = [] }: TimeSeriesChartPro
             }}
             labelFormatter={(label) => new Date(label as number).toLocaleString()}
           />
+          <Legend
+            formatter={(value) => {
+              const labels: Record<string, string> = {
+                impression_count: 'Impressions',
+                click_count: 'Clicks',
+                conversion_count: 'Conversions',
+              };
+              return labels[value] ?? value;
+            }}
+          />
           {renderAnomalyAreas(anomalies)}
           <Line
             type="monotone"
@@ -113,6 +126,7 @@ function TimeSeriesChart({ data, publisher, anomalies = [] }: TimeSeriesChartPro
             stroke={colors.line1}
             strokeWidth={2.5}
             dot={false}
+            isAnimationActive={false}
             activeDot={{ r: 4, fill: colors.dot }}
           />
           <Line
@@ -121,6 +135,7 @@ function TimeSeriesChart({ data, publisher, anomalies = [] }: TimeSeriesChartPro
             stroke={colors.line2}
             strokeWidth={2.5}
             dot={false}
+            isAnimationActive={false}
             activeDot={{ r: 4, fill: colors.dot }}
           />
           <Line
@@ -129,6 +144,7 @@ function TimeSeriesChart({ data, publisher, anomalies = [] }: TimeSeriesChartPro
             stroke={colors.line3}
             strokeWidth={2.5}
             dot={false}
+            isAnimationActive={false}
             activeDot={{ r: 4, fill: colors.dot }}
           />
         </LineChart>

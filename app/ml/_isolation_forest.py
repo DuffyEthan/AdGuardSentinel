@@ -223,7 +223,7 @@ def compute_features(df):
     return features
 
 # isolation forest anomaly detection 
-class anomaly_detection:
+class AnomalyDetection:
     
     def __init__(self, contamination=0.05, threshold=0.7):
         """
@@ -294,9 +294,8 @@ class anomaly_detection:
     def normalise_scores(self, scores):
         """
         converting raw anomaly scores to trust score [0-1].
-        I'm using the formula from ml pod doc:
-        T = 1 - (s - s_min) / (s_max - s_min)
-        
+        T = (s - s_min) / (s_max - s_min)
+
         Higher trust score = more organic
         Lower trust score = more suspicious
         """
@@ -307,11 +306,10 @@ class anomaly_detection:
         if s_max - s_min < 1e-9:
             return np.full_like(scores, 0.5)
         
-        # normalising the score using trust score formula
-        # isolation forests return higher (less negative) scores for normal data
-        # so I flip it: trust score = 1 - normalised score
+        # IsolationForest decision_function: higher (less negative) = more normal.
+        # Normalise directly so that min raw score → 0.0 (fraud) and max → 1.0 (organic).
         normalised = (scores - s_min) / (s_max - s_min)
-        trust_score = 1 - normalised
+        trust_score = normalised
         
         # round to 2 decimal points and make sure it's between 0 and 1
         return np.clip(np.round(trust_score, 2), 0.0, 1.0)
@@ -331,7 +329,7 @@ class anomaly_detection:
             ))
         return logs
 
-class ctr_fraud_detection(anomaly_detection):
+class CtrFraudDetection(AnomalyDetection):
     # An Isolation Forest just for the CTR fraud detection
     
     def __init__(self, contamination=0.05, threshold=0.7):
@@ -345,7 +343,7 @@ class ctr_fraud_detection(anomaly_detection):
             'ctr_deviation',
         ]
 
-class impression_fraud_detection(anomaly_detection):
+class ImpressionFraudDetection(AnomalyDetection):
     # An Isolation Forest just for the impression fraud detection
 
     def __init__(self, contamination=0.05, threshold=0.7):
@@ -362,7 +360,7 @@ class impression_fraud_detection(anomaly_detection):
         ]
 
 
-class click_injection_detector(anomaly_detection):
+class ClickInjectionDetector(AnomalyDetection):
     # An isolation forest for the click injection fraud detection
 
     # NO TIMING FEATURES, uses only CVR patterns
@@ -415,7 +413,7 @@ def train_isolation_forest(df: pd.DataFrame, contamination: float = 0.05, thresh
     
     """
     # creating an instance of the anomaly_detection (contamination, threshold) class
-    model = anomaly_detection(contamination = contamination, threshold = threshold)
+    model = AnomalyDetection(contamination = contamination, threshold = threshold)
 
     # calling model.fit(df) function - training the model on historical data
     model.fit(df)
@@ -425,19 +423,25 @@ def train_isolation_forest(df: pd.DataFrame, contamination: float = 0.05, thresh
     return predictions
 
 def train_multiple_detection_model(
-       df: pd.DataFrame,
-    contamination: float = 0.05,
+    df: pd.DataFrame,
+    contamination: float | dict = 0.05,
     threshold: float = 0.7
-) -> tuple[pd.DataFrame, tuple]: 
+) -> tuple[pd.DataFrame, tuple]:
+    """Train three fraud-type detectors.
 
-    # train seperate isolation forests, one for each fraud type
-    # Returns:
-    #   - preditions: individual fraud score and overall score
-    #   - models
-    
-    ctr_detector = ctr_fraud_detection(contamination, threshold)
-    impression_detector = impression_fraud_detection(contamination, threshold)
-    click_detector = click_injection_detector(contamination, threshold)
+    contamination may be a single float (applied to all models) or a dict with
+    keys 'ctr_fraud', 'impression_fraud', 'click_injection'.
+    """
+    if isinstance(contamination, dict):
+        c_ctr   = contamination.get('ctr_fraud', 0.05)
+        c_imp   = contamination.get('impression_fraud', 0.05)
+        c_click = contamination.get('click_injection', 0.05)
+    else:
+        c_ctr = c_imp = c_click = contamination
+
+    ctr_detector = CtrFraudDetection(c_ctr, threshold)
+    impression_detector = ImpressionFraudDetection(c_imp, threshold)
+    click_detector = ClickInjectionDetector(c_click, threshold)
     
     # training each model
     ctr_detector.fit(df)
@@ -560,17 +564,18 @@ if __name__ == "__main__":
     data = []
     start_time = datetime(2026, 1, 1, 0, 0, 0)
     
-    for pub_name, publisher in publisher_catalog.items():
-        print(f"      Generating {pub_name}...")
-        
+    for pub_id, pub_info in publisher_catalog.items():
+        print(f"      Generating {pub_info['name']}...")
+        generator = pub_info["generator"]
+
         for hour in range(200):
             timestamp = start_time + timedelta(hours=hour)
             settings = {'timestamp': timestamp}
-            ts, impressions, clicks, conversions = publisher.publisher_data_next(settings)
-            
+            ts, impressions, clicks, conversions = generator.publisher_data_next(settings)
+
             data.append({
                 'bucket_timestamp': ts,
-                'publisher_id': pub_name,
+                'publisher_id': pub_id,
                 'impression_count': impressions,
                 'click_count': clicks,
                 'conversion_count': conversions
@@ -582,10 +587,22 @@ if __name__ == "__main__":
     print("\n[2/5] Computing features...")
     df_features = compute_features(df)
     print(f"  Computed {len(df_features.columns)} features")
-    
+
+    # print("\n[3/5] Computing per-model contamination from Markov stationary distributions...")
+    # rows_per_publisher = 200
+    # total_rows = len(publisher_catalog) * rows_per_publisher
+    # contamination: dict[str, float] = {'ctr_fraud': 0.0, 'impression_fraud': 0.0, 'click_injection': 0.0}
+    # for pub_info in publisher_catalog.values():
+    #     for fraud_type, prob in pub_info['fraud_probabilities'].items():
+    #         contamination[fraud_type] += prob * rows_per_publisher / total_rows
+    # print(f"     ctr_fraud:       {contamination['ctr_fraud']:.4f}")
+    # print(f"     impression_fraud:{contamination['impression_fraud']:.4f}")
+    # print(f"     click_injection: {contamination['click_injection']:.4f}")
+    contamination = 0.04
+
     predictions, (ctr_model, impression_model, click_model) = train_multiple_detection_model(
         df_features,
-        contamination=0.1,
+        contamination=contamination,
         threshold=0.7
     )
     print(" 3 models trained")

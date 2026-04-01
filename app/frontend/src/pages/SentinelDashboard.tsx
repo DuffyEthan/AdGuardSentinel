@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useSentinelData } from '../context/SentinelDataContext';
 import StatCard from '../components/sentinel/StatCard';
 import PublisherTable from '../components/sentinel/PublisherTable';
 import TrustDistributionChart from '../components/sentinel/TrustDistributionChart';
@@ -13,17 +14,6 @@ import type {
   ChatMessage,
   PublisherOverview,
 } from '../types/sentinel';
-
-// ─── Demo / placeholder data ────────────────────────────────────────────────
-// Replace these with real API props when connecting to the backend.
-
-const DEMO_PUBLISHERS: PublisherRow[] = [
-  { id: '1', name: 'Site_A', trustScore: 91, ctr: 1.2, cvr: 3.2, anomalyScore: 0.08, status: 'Trusted',          lastAlert: '—' },
-  { id: '2', name: 'Site_B', trustScore: 58, ctr: 2.8, cvr: 1.1, anomalyScore: 0.48, status: 'Watchlist',         lastAlert: '4h ago' },
-  { id: '3', name: 'Site_C', trustScore: 33, ctr: 8.3, cvr: 0.3, anomalyScore: 0.81, status: 'Suspicious',        lastAlert: '1h ago' },
-  { id: '4', name: 'Site_D', trustScore: 20, ctr: 7.6, cvr: 0.1, anomalyScore: 0.92, status: 'Zero Conversions',  lastAlert: '30m ago' },
-  { id: '5', name: 'Site_E', trustScore: 12, ctr: 9.1, cvr: 0.2, anomalyScore: 0.96, status: 'Bot-Like Activity', lastAlert: '10m ago' },
-];
 
 const DEMO_TRUST_BUCKETS: TrustBucket[] = [
   { range: '0–20',   count: 42 },
@@ -44,7 +34,6 @@ const DEMO_FRAUD_EVENTS: FraudEvent[] = [
   { day: 'Tue', events: 19 },
 ];
 
-const DEMO_OVERVIEW: PublisherOverview = { trusted: 77, watchlist: 7, fraudulent: 16 };
 
 const DEMO_INIT_MESSAGES: ChatMessage[] = [
   {
@@ -70,42 +59,58 @@ const DEMO_INIT_MESSAGES: ChatMessage[] = [
 // ────────────────────────────────────────────────────────────────────────────
 
 export interface SentinelDashboardProps {
-  /** Summary stats shown in the top bar */
-  publishersMonitored?: number;
-  suspiciousPublishers?: number;
-  avgNetworkCtr?: number;
   fraudEventsLast24h?: number;
-  /** Table data */
-  publishers?: PublisherRow[];
-  /** Charts data */
   trustBuckets?: TrustBucket[];
   fraudEvents?: FraudEvent[];
-  /** Right-column data */
-  overview?: PublisherOverview;
 }
 
 function SentinelDashboard({
-  publishersMonitored  = 150,
-  suspiciousPublishers = 12,
-  avgNetworkCtr        = 1.9,
-  fraudEventsLast24h   = 17,
-  publishers           = DEMO_PUBLISHERS,
-  trustBuckets         = DEMO_TRUST_BUCKETS,
-  fraudEvents          = DEMO_FRAUD_EVENTS,
-  overview             = DEMO_OVERVIEW,
+  fraudEventsLast24h = 17,
+  trustBuckets       = DEMO_TRUST_BUCKETS,
+  fraudEvents        = DEMO_FRAUD_EVENTS,
 }: SentinelDashboardProps) {
   const navigate = useNavigate();
-  const [sortBy, setSortBy]                       = useState('trustScore');
-  const [selectedPublisher, setSelectedPublisher] = useState(publishers[0]?.name ?? '');
-  const [messages, setMessages]                   = useState<ChatMessage[]>(DEMO_INIT_MESSAGES);
+  const { publishers } = useSentinelData();
+  const [selectedPublisher, setSelectedPublisher] = useState(''); // used by SentinelAssistant when re-enabled
 
-  // Sort publishers client-side; backend can also pre-sort via props
-  const sortedPublishers = [...publishers].sort((a, b) => {
-    if (sortBy === 'name') return a.name.localeCompare(b.name);
-    const aVal = a[sortBy as keyof PublisherRow] as number;
-    const bVal = b[sortBy as keyof PublisherRow] as number;
-    return bVal - aVal;
-  });
+  const publishersMonitored = publishers.length;
+  const suspiciousPublishers = useMemo(
+    () => publishers.filter(p => p.status !== 'Trusted').length,
+    [publishers]
+  );
+  const avgNetworkCtr = useMemo(() => {
+    if (publishers.length === 0) return 0;
+    const sum = publishers.reduce((acc, p) => acc + p.ctr, 0);
+    return Math.round((sum / publishers.length) * 10) / 10;
+  }, [publishers]);
+  const overview: PublisherOverview = useMemo(() => ({
+    trusted:    publishers.filter(p => p.status === 'Trusted').length,
+    watchlist:  publishers.filter(p => p.status === 'Watchlist').length,
+    fraudulent: publishers.filter(p => p.status !== 'Trusted' && p.status !== 'Watchlist').length,
+  }), [publishers]);
+
+  const computedTrustBuckets: TrustBucket[] = useMemo(() => {
+    if (publishers.length === 0) return trustBuckets;
+    const buckets: TrustBucket[] = [
+      { range: '0–20',   count: 0 },
+      { range: '20–40',  count: 0 },
+      { range: '40–60',  count: 0 },
+      { range: '60–80',  count: 0 },
+      { range: '80–90',  count: 0 },
+      { range: '90–100', count: 0 },
+    ];
+    for (const p of publishers) {
+      const s = p.trustScore;
+      if      (s < 20)  buckets[0].count++;
+      else if (s < 40)  buckets[1].count++;
+      else if (s < 60)  buckets[2].count++;
+      else if (s < 80)  buckets[3].count++;
+      else if (s < 90)  buckets[4].count++;
+      else              buckets[5].count++;
+    }
+    return buckets;
+  }, [publishers, trustBuckets]);
+  const [messages, setMessages]                   = useState<ChatMessage[]>(DEMO_INIT_MESSAGES);
 
   function handleShowDetails(_pub: PublisherRow) {
     navigate('/publishers');
@@ -159,7 +164,7 @@ function SentinelDashboard({
         <StatCard label="Publishers Monitored"   value={publishersMonitored}  variant="teal" />
         <StatCard label="Suspicious Publishers"  value={suspiciousPublishers} variant="orange" />
         <StatCard label="Avg Network CTR"        value={`${avgNetworkCtr}%`}  variant="orange" />
-        <StatCard label="Fraud Events (Last 24h)" value={fraudEventsLast24h}  variant="red" />
+        {/* <StatCard label="Fraud Events (Last 24h)" value={fraudEventsLast24h}  variant="red" /> */}
       </div>
 
       {/* ── Main content ──────────────────────────────────────────────────── */}
@@ -167,14 +172,11 @@ function SentinelDashboard({
         {/* Left column */}
         <div className="sentinel-left">
           <PublisherTable
-            publishers={sortedPublishers}
-            sortBy={sortBy}
-            onSortChange={setSortBy}
             onShowDetails={handleShowDetails}
           />
           <div className="sentinel-charts-row">
-            <TrustDistributionChart data={trustBuckets} />
-            <FraudEventsChart data={fraudEvents} />
+            <TrustDistributionChart data={computedTrustBuckets} />
+            {/* <FraudEventsChart data={fraudEvents} /> */}
           </div>
         </div>
 

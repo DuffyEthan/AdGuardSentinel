@@ -553,12 +553,14 @@ a:hover {
 .status-badge--suspicious      { background: #ffe0b2; color: #bf360c; }
 .status-badge--zero-conversions { border: 1px solid #e57373; color: #c62828; background: transparent; }
 .status-badge--bot-like        { background: #b71c1c; color: #fff; }
+.status-badge--fraud           { background: #b71c1c; color: #fff; }
 
 [data-theme="dark"] .status-badge--trusted         { background: #1b5e20; color: #a5d6a7; }
 [data-theme="dark"] .status-badge--watchlist       { background: #3e2723; color: #ffcc80; }
 [data-theme="dark"] .status-badge--suspicious      { background: #3e1f00; color: #ffab91; }
 [data-theme="dark"] .status-badge--zero-conversions { border-color: #ef9a9a; color: #ef9a9a; }
 [data-theme="dark"] .status-badge--bot-like        { background: #7f0000; color: #ffcdd2; }
+[data-theme="dark"] .status-badge--fraud           { background: #7f0000; color: #ffcdd2; }
 
 /* ── Sentinel Assistant ──────────────────────────────────────── */
 .sentinel-assistant {

@@ -43,3 +43,6 @@ dog_graph = {
 }
 
 pub_dog = MarkovDataGenerator.from_dict(dog_graph, "normal")
+
+# Stationary fraud fraction: π(click_injection) = p/(p+q) = 0.07/(0.07+0.12) ≈ 0.3684
+FRAUD_STATE_PROBABILITY = {'ctr_fraud': 0.0, 'impression_fraud': 0.0, 'click_injection': 0.3684}

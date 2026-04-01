@@ -27,9 +27,10 @@ export interface DataPoint {
 }
 
 interface ApiPublisher {
-  publisher_name: string;
   publisher_id: string;
+  publisher_name: string;
   campaign_id: string;
+  campaign_name: string | null;
 }
 
 interface ApiRow {
@@ -48,22 +49,33 @@ function Dashboard() {
     fetch(`${API_BASE}/publishers`)
       .then(r => r.json())
       .then((pubs: ApiPublisher[]) => {
-        const campaign: Campaign = { name: 'Publishers', publishers: [] };
-        campaign.publishers = pubs.map(p => ({
-          name: p.publisher_name,
-          publisher_id: p.publisher_id,
-          campaign_id: p.campaign_id,
-          campaign,
-        }));
-        setCampaigns([campaign]);
-        if (campaign.publishers.length > 0) setSelected(campaign.publishers[0]);
+        // Group publishers by campaign_id.
+        const campaignMap = new Map<string, Campaign>();
+        for (const p of pubs) {
+          const key = p.campaign_id ?? 'unknown';
+          if (!campaignMap.has(key)) {
+            campaignMap.set(key, { name: p.campaign_name ?? key, publishers: [] });
+          }
+          const campaign = campaignMap.get(key)!;
+          campaign.publishers.push({
+            name: p.publisher_name,
+            publisher_id: p.publisher_id,
+            campaign_id: p.campaign_id,
+            campaign,
+          });
+        }
+        const grouped = Array.from(campaignMap.values());
+        setCampaigns(grouped);
+        if (grouped.length > 0 && grouped[0].publishers.length > 0) {
+          setSelected(grouped[0].publishers[0]);
+        }
       });
   }, []);
 
   const fetchMetrics = useCallback(() => {
     if (!selected) return;
     const params = new URLSearchParams({
-      t: new Date().toISOString(),
+      t: '9999-12-31T23:59:59Z',
       n: String(N_POINTS),
       publisher_id: selected.publisher_id,
       campaign_id: selected.campaign_id,

@@ -35,12 +35,15 @@ import numpy as np
 import pandas as pd
 from sqlalchemy.orm import Session
 
-from app.db import SessionLocal
+from sqlalchemy import text
+
+from app.db import SessionLocal, engine
+from app.db.models import Base, Campaigns, Publishers
 from app.fastapi.services.anomaly_periods_service import process_new_log
 from app.fastapi.services.derived_metrics_service import compute_and_store
-from app.ml._isolation_forest import compute_features
+from app.ml._isolation_forest import *
 from app.ml.batch_data_generator import upsert_raw_metrics
-from app.ml.publishers import publisher_catalog
+from app.ml.publishers import campaign_catalog, publisher_catalog
 from app.repositories.model_logs_repository import ModelLogsRepository
 from app.repositories.raw_metrics_repository import RawMetricsRepository
 
@@ -50,7 +53,7 @@ logger = logging.getLogger("orchestrator")
 # Configuration
 # ---------------------------------------------------------------------------
 
-TICK_INTERVAL_SECONDS: float = 5.0
+TICK_INTERVAL_SECONDS: float = 2.0
 """Wall-clock seconds between ticks."""
 
 SIMULATED_INTERVAL_MINUTES: int = 5
@@ -62,8 +65,11 @@ ML_INFERENCE_EVERY_N_TICKS: int = 50
 ML_WINDOW_SIZE: int = 250
 """Number of most-recent raw_metrics rows fed to the models."""
 
-ML_MIN_ROWS: int = 25
+ML_MIN_ROWS: int = 100
 """Minimum rows required before inference is attempted."""
+
+WARMUP_TICKS: int = 100
+"""Number of ticks to run instantly at startup (no sleep) to pre-seed data."""
 
 MODEL_PATHS: dict[str, str] = {
     "ctr_fraud": "app/ml/models/ctr_fraud_detector_v2.joblib",
@@ -202,7 +208,7 @@ def step_ml_inference(
     publisher_id: uuid.UUID,
     campaign_id: uuid.UUID,
     current_sim_time: datetime,
-    models: dict[str, Any],
+    models: dict[str, AnomalyDetection],
 ) -> int:
     """Run 3 fraud-detection models and write combined scores to model_logs.
 
@@ -251,16 +257,12 @@ def step_ml_inference(
     )
     df["bucket_timestamp"] = pd.to_datetime(df["bucket_timestamp"], utc=True)
 
-    # Compute engineered features required by all 3 models.
-    features_df = compute_features(df)
-
-    # Run each model and collect normalized scores.
+    # Run each model and collect normalized trust scores (model.predict handles
+    # feature engineering internally and returns scores already in [0, 1]).
     per_model_scores: dict[str, np.ndarray] = {}
     for fraud_type, model in models.items():
-        cols = FEATURE_SETS[fraud_type]
-        X = features_df[cols].fillna(0)
-        raw_scores = model.decision_function(X)
-        per_model_scores[fraud_type] = _normalize_scores(raw_scores)
+        pred_df = model.predict(df)
+        per_model_scores[fraud_type] = pred_df["trust_score"].values
 
     # Combined trust score = element-wise minimum across all 3 models.
     all_scores = np.stack(list(per_model_scores.values()), axis=0)
@@ -269,26 +271,24 @@ def step_ml_inference(
     # Determine primary fraud type per row.
     fraud_types = _determine_fraud_type(per_model_scores, trust_scores)
 
-    # Build 5-tuples for bulk_insert:
-    # (log_timestamp, publisher_id, model_name, fraud_type, score)
-    timestamps = features_df["bucket_timestamp"].tolist()
+    # Only log the latest row — ML runs every tick so each row is scored
+    # exactly once when it becomes the most recent entry in the window.
+    latest_idx = len(trust_scores) - 1
+    timestamps = df["bucket_timestamp"].tolist()
     log_tuples: list[tuple] = [
         (
-            timestamps[i],
+            timestamps[latest_idx],
             publisher_id,
             MODEL_NAME,
-            fraud_types[i],
-            round(float(trust_scores[i]), 2),
+            fraud_types[latest_idx],
+            round(float(trust_scores[latest_idx]), 2),
         )
-        for i in range(len(trust_scores))
     ]
 
     logs_repo = ModelLogsRepository(session)
     logs_repo.bulk_insert(log_tuples)
 
-    # Update anomaly_periods for the most recent timestamp only
-    # (incremental processing – one log at a time).
-    latest_idx = len(trust_scores) - 1
+    # Update anomaly_periods for the most recent timestamp.
     process_new_log(
         session=session,
         publisher_id=publisher_id,
@@ -305,7 +305,7 @@ def step_ml_inference(
 # ---------------------------------------------------------------------------
 
 
-def _try_load_models() -> dict[str, Any] | None:
+def _try_load_models() -> dict[str, AnomalyDetection] | None:
     """Attempt to load all 3 pre-trained fraud-detection models.
 
     Returns a dict mapping fraud_type -> sklearn model, or None if any
@@ -329,6 +329,54 @@ def _try_load_models() -> dict[str, Any] | None:
 
     logger.info("All %d ML models loaded successfully", len(loaded))
     return loaded
+
+
+# ---------------------------------------------------------------------------
+# Database initialisation
+# ---------------------------------------------------------------------------
+
+def initialise_database() -> None:
+    """Wipe all data and re-seed publishers and campaigns.
+
+    Called once at orchestrator startup to guarantee a clean slate.
+    Tables are truncated (not dropped) so the schema is preserved.
+    Run ``docker-compose down -v`` once to clear a stale volume.
+    """
+    assert engine is not None, "DATABASE_URL is not configured."
+
+    # Ensure all tables exist (no-op if already present).
+    Base.metadata.create_all(bind=engine)
+
+    # Truncate all data in dependency-safe order.
+    with engine.connect() as conn:
+        conn.execute(text(
+            "TRUNCATE TABLE "
+            "model_logs, anomaly_periods, derived_metrics, model_reports, "
+            "raw_metrics, model_runs, campaigns, publishers "
+            "RESTART IDENTITY CASCADE"
+        ))
+        conn.commit()
+
+    # Seed campaigns and publishers.
+    with SessionLocal() as session:
+        for camp_id, info in campaign_catalog.items():
+            session.merge(Campaigns(
+                campaign_id=camp_id,
+                campaign_name=info["name"],
+                start_date=info["start_date"],
+            ))
+        for pub_id, info in publisher_catalog.items():
+            session.merge(Publishers(
+                publisher_id=pub_id,
+                publisher_name=info["name"],
+            ))
+        session.commit()
+
+    logger.info(
+        "Database initialised: %d campaign(s), %d publisher(s) seeded.",
+        len(campaign_catalog),
+        len(publisher_catalog),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -358,6 +406,7 @@ def run(
     )
 
     logger.info("Orchestrator starting")
+    initialise_database()
     logger.info(
         "  tick_interval=%.1fs  sim_interval=%dmin  ml_every_n=%d",
         tick_interval,
@@ -371,6 +420,30 @@ def run(
 
     current_sim_time = datetime.now(timezone.utc).replace(second=0, microsecond=0)
     tick_count = 0
+
+    # ── Warmup: generate WARMUP_TICKS rows per publisher with no sleep ──────
+    logger.info("Warmup: generating %d ticks with no sleep...", WARMUP_TICKS)
+    for _ in range(WARMUP_TICKS):
+        tick_count += 1
+        session: Session = SessionLocal()
+        try:
+            for pub_id, info in publisher_catalog.items():
+                camp_id: uuid.UUID = info["campaign_id"]
+                generator = info["generator"]
+                try:
+                    step_generate_data(session, pub_id, camp_id, generator, current_sim_time)
+                    step_derived_metrics(session, pub_id, camp_id, current_sim_time)
+                except Exception:
+                    logger.exception("  [warmup] Error for %s at tick %d", info["name"], tick_count)
+            session.commit()
+        except Exception:
+            session.rollback()
+            logger.exception("Warmup tick %d failed, rolled back", tick_count)
+        finally:
+            session.close()
+        current_sim_time += timedelta(minutes=SIMULATED_INTERVAL_MINUTES)
+    logger.info("Warmup complete (%d ticks). Entering normal loop.", WARMUP_TICKS)
+    # ────────────────────────────────────────────────────────────────────────
 
     while True:
         tick_count += 1
@@ -418,7 +491,7 @@ def run(
                         )
 
                     # --- Step 3: ML inference (every N ticks) -----------------
-                    if models is not None and tick_count % ml_every_n == 0:
+                    if models is not None and tick_count >= ML_MIN_ROWS:
                         scored = step_ml_inference(
                             session,
                             pub_id,

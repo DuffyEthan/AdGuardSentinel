@@ -1,13 +1,16 @@
 export type PublisherStatus =
   | 'Trusted'
   | 'Watchlist'
-  | 'Suspicious'
-  | 'Zero Conversions'
-  | 'Bot-Like Activity';
+  | 'CTR Fraud'
+  | 'Impression Fraud'
+  | 'Click Injection'
+  | 'Fraud';
 
 export interface PublisherRow {
   id: string;
   name: string;
+  campaignId: string | null;
+  campaignName: string | null;
   trustScore: number;
   ctr: number;          // percentage value, e.g. 1.2 means 1.2%
   cvr: number;          // percentage value
