@@ -50,8 +50,8 @@ class TestGetAvgNetworkCtr:
 
 class TestGetFraudEventCount:
     def test_counts_all_anomalous_rows(self, db_session, seed_data):
-        # PUB1 anomalous: 0.80 (h02), 0.75 (h03) = 4
-        # PUB2 anomalous: 0.50 (h02), 0.55 (h03), 0.45 (h04) = 0
+        # PUB1 anomalous: [0.10 (h01), 0.15 (h02), 0.20 (h03), 0.12 (h05)] = 4
+        # PUB2 anomalous: [] = 0
         # total = 4
         repo = SentinelRepository(db_session)
         assert repo.get_fraud_event_count(SINCE) == 4
