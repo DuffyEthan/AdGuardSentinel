@@ -37,14 +37,7 @@ def read_root():
     return {"Hello": "World"}
 
 
-@app.get("/model-logs")
-def model_logs_get_between():
-    return {"0": "get-between"}
 
-
-@app.get("/raw-metrics")
-def model_logs_get_between():
-    return {"0": "get-last-n-before"}
 
 
 @app.get("/model-logs/get-between")
