@@ -342,7 +342,8 @@ def initialise_database() -> None:
     Tables are truncated (not dropped) so the schema is preserved.
     Run ``docker-compose down -v`` once to clear a stale volume.
     """
-    assert engine is not None, "DATABASE_URL is not configured."
+    if engine is None:
+        raise RuntimeError("DATABASE_URL is not configured.")
 
     # Ensure all tables exist (no-op if already present).
     Base.metadata.create_all(bind=engine)
@@ -401,9 +402,8 @@ def run(
     max_ticks:
         If set, stop after this many ticks (useful for testing).
     """
-    assert SessionLocal is not None, (
-        "DATABASE_URL is not configured; cannot create a session."
-    )
+    if SessionLocal is None:
+        raise RuntimeError("DATABASE_URL is not configured; cannot create a session.")
 
     logger.info("Orchestrator starting")
     initialise_database()
