@@ -44,11 +44,19 @@ function Dashboard() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [selected, setSelected] = useState<Publisher | null>(null);
   const [data, setData] = useState<DataPoint[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch(`${API_BASE}/publishers`)
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then((pubs: ApiPublisher[]) => {
+        if (pubs.length === 0) {
+          setLoadError('No publishers found. Start the simulation to generate data.');
+          return;
+        }
         // Group publishers by campaign_id.
         const campaignMap = new Map<string, Campaign>();
         for (const p of pubs) {
@@ -69,7 +77,8 @@ function Dashboard() {
         if (grouped.length > 0 && grouped[0].publishers.length > 0) {
           setSelected(grouped[0].publishers[0]);
         }
-      });
+      })
+      .catch(err => setLoadError(`Could not reach backend: ${err.message}`));
   }, []);
 
   const fetchMetrics = useCallback(() => {
@@ -101,7 +110,9 @@ function Dashboard() {
   if (!selected) {
     return (
       <div className="with-sidebar">
-        <div className="main-content">Loading publishers…</div>
+        <div className="main-content">
+          {loadError ?? 'Loading publishers…'}
+        </div>
       </div>
     );
   }

@@ -169,9 +169,8 @@ def main() -> None:
     run_forever = get_bool_from_env("RUN_FOREVER", config.run_forever)
     max_intervals = get_int_from_env("MAX_INTERVALS", config.max_intervals)
 
-    assert SessionLocal is not None, (
-        "DATABASE_URL is not configured; cannot create a session."
-    )
+    if SessionLocal is None:
+        raise RuntimeError("DATABASE_URL is not configured; cannot create a session.")
 
     # Build (generator, publisher_uuid, campaign_uuid) for every publisher.
     publishers = {

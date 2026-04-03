@@ -78,12 +78,12 @@ def seed_data(db_session: Session) -> dict:
 
     camp1 = Campaigns(
         campaign_id=CAMP1_ID,
-        publisher_id=PUB1_ID,
+        campaign_name="Campaign 1",
         start_date=datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc),
     )
     camp2 = Campaigns(
         campaign_id=CAMP2_ID,
-        publisher_id=PUB2_ID,
+        campaign_name="Campaign 2",
         start_date=datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc),
     )
     db_session.add_all([camp1, camp2])

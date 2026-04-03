@@ -4,71 +4,15 @@ import { useSentinelData } from '../context/SentinelDataContext';
 import StatCard from '../components/sentinel/StatCard';
 import PublisherTable from '../components/sentinel/PublisherTable';
 import TrustDistributionChart from '../components/sentinel/TrustDistributionChart';
-import FraudEventsChart from '../components/sentinel/FraudEventsChart';
 import PublisherOverviewChart from '../components/sentinel/PublisherOverviewChart';
-import SentinelAssistant from '../components/sentinel/SentinelAssistant';
 import type {
   PublisherRow,
   TrustBucket,
-  FraudEvent,
   ChatMessage,
   PublisherOverview,
 } from '../types/sentinel';
 
-const DEMO_TRUST_BUCKETS: TrustBucket[] = [
-  { range: '0–20',   count: 42 },
-  { range: '20–40',  count: 31 },
-  { range: '40–60',  count: 20 },
-  { range: '60–80',  count: 18 },
-  { range: '80–90',  count: 14 },
-  { range: '90–100', count: 25 },
-];
-
-const DEMO_FRAUD_EVENTS: FraudEvent[] = [
-  { day: 'Wed', events: 9 },
-  { day: 'Thu', events: 11 },
-  { day: 'Fri', events: 14 },
-  { day: 'Sat', events: 12 },
-  { day: 'Sun', events: 17 },
-  { day: 'Mon', events: 15 },
-  { day: 'Tue', events: 19 },
-];
-
-
-const DEMO_INIT_MESSAGES: ChatMessage[] = [
-  {
-    role: 'assistant',
-    content: 'I can help answer questions about publishers and their trust scores.',
-  },
-  {
-    role: 'user',
-    content: 'Explain trust score for Site_C',
-  },
-  {
-    role: 'assistant',
-    content: 'Explain trust score for Site_C:',
-    isWarning: true,
-    bullets: [
-      'A large CTR spike detected without matching conversion increase',
-      'CTR: 8.9% vs baseline 1.5%',
-      'CVR: 0.4% vs baseline 2.1% (recent drop).',
-      'Consistent, stable impression volume patterns in the 4h.',
-    ],
-  },
-];
-// ────────────────────────────────────────────────────────────────────────────
-
-export interface SentinelDashboardProps {
-  fraudEventsLast24h?: number;
-  trustBuckets?: TrustBucket[];
-  fraudEvents?: FraudEvent[];
-}
-
-function SentinelDashboard({
-  fraudEventsLast24h = 17,
-  trustBuckets       = DEMO_TRUST_BUCKETS,
-  fraudEvents        = DEMO_FRAUD_EVENTS,
-}: SentinelDashboardProps) {
+function SentinelDashboard() {
   const navigate = useNavigate();
   const { publishers } = useSentinelData();
   const [selectedPublisher, setSelectedPublisher] = useState(''); // used by SentinelAssistant when re-enabled
@@ -90,7 +34,6 @@ function SentinelDashboard({
   }), [publishers]);
 
   const computedTrustBuckets: TrustBucket[] = useMemo(() => {
-    if (publishers.length === 0) return trustBuckets;
     const buckets: TrustBucket[] = [
       { range: '0–20',   count: 0 },
       { range: '20–40',  count: 0 },
@@ -109,8 +52,11 @@ function SentinelDashboard({
       else              buckets[5].count++;
     }
     return buckets;
-  }, [publishers, trustBuckets]);
-  const [messages, setMessages]                   = useState<ChatMessage[]>(DEMO_INIT_MESSAGES);
+  }, [publishers]);
+
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    { role: 'assistant', content: 'I can help answer questions about publishers and their trust scores.' },
+  ]);
 
   function handleShowDetails(_pub: PublisherRow) {
     navigate('/publishers');
