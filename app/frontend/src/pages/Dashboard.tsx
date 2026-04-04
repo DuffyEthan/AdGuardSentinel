@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Sidebar from '../components/Sidebar';
 import TimeSeriesChart from '../components/TimeSeriesChart';
+import type { AnomalyEvent } from '../components/AnomalyArea';
 
 const API_BASE = 'http://localhost:8000';
 const POLL_MS = 5000;
@@ -40,10 +41,19 @@ interface ApiRow {
   conversion_count: number;
 }
 
+interface ApiAnomalyRow {
+  x1: string;
+  x2: string;
+  label?: string;
+  fill?: string;
+  stroke?: string;
+}
+
 function Dashboard() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [selected, setSelected] = useState<Publisher | null>(null);
   const [data, setData] = useState<DataPoint[]>([]);
+  const [anomalies, setAnomalies] = useState<AnomalyEvent[]>([]);
 
   useEffect(() => {
     fetch(`${API_BASE}/publishers`)
@@ -74,21 +84,51 @@ function Dashboard() {
 
   const fetchMetrics = useCallback(() => {
     if (!selected) return;
+
     const params = new URLSearchParams({
       t: '9999-12-31T23:59:59Z',
       n: String(N_POINTS),
       publisher_id: selected.publisher_id,
       campaign_id: selected.campaign_id,
     });
+
     fetch(`${API_BASE}/raw-metrics/get-last-n-before?${params}`)
       .then(r => r.json())
       .then((rows: ApiRow[]) => {
-        setData(rows.map(row => ({
+        const mappedData = rows.map(row => ({
           x: new Date(row.bucket_timestamp).getTime(),
           impression_count: row.impression_count,
           click_count: row.click_count,
           conversion_count: row.conversion_count,
-        })));
+        }));
+
+        setData(mappedData);
+
+        if (rows.length === 0) {
+          setAnomalies([]);
+          return;
+        }
+
+        const t1 = rows[0].bucket_timestamp;
+        const t2 = rows[rows.length - 1].bucket_timestamp;
+
+        const anomalyParams = new URLSearchParams({
+          campaign_id: selected.campaign_id,
+          t1,
+          t2,
+        });
+
+        fetch(`${API_BASE}/anomaly-periods/${selected.publisher_id}?${anomalyParams}`)
+          .then(r => r.json())
+          .then((anomalyRows: ApiAnomalyRow[]) => {
+            setAnomalies(anomalyRows.map(row => ({
+              x1: new Date(row.x1).getTime(),
+              x2: new Date(row.x2).getTime(),
+              label: row.label,
+              fill: row.fill,
+              stroke: row.stroke,
+            })));
+          });
       });
   }, [selected]);
 
@@ -116,7 +156,7 @@ function Dashboard() {
             <p className="subtitle">Live time-series data — polling every 5s</p>
           </div>
           <div className="panel">
-            <TimeSeriesChart data={data} publisher={selected.name} />
+            <TimeSeriesChart data={data} publisher={selected.name} anomalies={anomalies} />
           </div>
         </div>
       </div>
