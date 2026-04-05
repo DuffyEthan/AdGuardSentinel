@@ -1,4 +1,3 @@
-import math
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -8,11 +7,10 @@ from sqlalchemy import func, desc, asc, and_
 from app.db.models import Publishers, ModelLogs, RawMetrics, DerivedMetrics
 from app.repositories.base import BaseRepository
 
-# A publisher is considered suspicious when its trust score (0–1 from the ML
-# model) falls below this value, i.e. anomaly_score = 1 - trust >= 0.7.
-TRUST_THRESHOLD = 0.3          # below this → suspicious
-ROLLING_WINDOW_HOURS = 24      # look-back window for the weighted average
-DECAY_HALF_LIFE_HOURS = 2.0    # how quickly older scores lose weight
+# model_logs.score is an anomaly score (0 = normal, 1 = fully anomalous).
+# Trust score is derived as (1 - score); see the publisher_trust_score SQL view.
+SUSPICIOUS_THRESHOLD = 0.3   # anomaly score above this → flagged as suspicious
+EVIDENCE_THRESHOLD = 0.7     # higher bar used in get_anomaly_evidence for high-confidence outliers only
 
 
 class SentinelRepository(BaseRepository):
@@ -23,42 +21,13 @@ class SentinelRepository(BaseRepository):
         result = self.session.query(func.max(ModelLogs.log_timestamp)).scalar()
         return result if result is not None else datetime.now(timezone.utc)
 
-    def _time_weighted_trust_score(
-        self, publisher_id: uuid.UUID, as_of: datetime
-    ) -> float:
-        """Exponentially decayed weighted average of trust scores over the
-        rolling window.  Returns a value in [0, 1] where 1 = fully trusted."""
-        since = as_of - timedelta(hours=ROLLING_WINDOW_HOURS)
-        logs = (
-            self.session.query(ModelLogs.log_timestamp, ModelLogs.score)
-            .filter(
-                ModelLogs.publisher_id == publisher_id,
-                ModelLogs.log_timestamp >= since,
-                ModelLogs.log_timestamp <= as_of,
-            )
-            .order_by(desc(ModelLogs.log_timestamp))
-            .all()
-        )
-        if not logs:
-            return 1.0  # no data → assume trusted until proven otherwise
-
-        weighted_sum = 0.0
-        total_weight = 0.0
-        for ts, score in logs:
-            age_hours = (as_of - ts).total_seconds() / 3600
-            weight = math.exp(-age_hours * math.log(2) / DECAY_HALF_LIFE_HOURS)
-            weighted_sum += weight * float(score)
-            total_weight += weight
-
-        return weighted_sum / total_weight if total_weight > 0 else 1.0
-
     # ── 2.1 Stats Row ──────────────────────────────────────────────────
 
     def get_publisher_count(self) -> int:
         return self.session.query(func.count(Publishers.publisher_id)).scalar() or 0
 
     def get_suspicious_publisher_count(self, since: datetime) -> int:
-        # Suspicious = most recent trust score below TRUST_THRESHOLD
+        # Suspicious = most recent anomaly score above SUSPICIOUS_THRESHOLD
         latest_ts = (
             self.session.query(
                 ModelLogs.publisher_id,
@@ -78,7 +47,7 @@ class SentinelRepository(BaseRepository):
                     ModelLogs.log_timestamp == latest_ts.c.max_ts,
                 ),
             )
-            .filter(ModelLogs.score < TRUST_THRESHOLD)
+            .filter(ModelLogs.score > SUSPICIOUS_THRESHOLD)
             .scalar()
         )
         return count or 0
@@ -103,7 +72,7 @@ class SentinelRepository(BaseRepository):
             self.session.query(func.count())
             .select_from(ModelLogs)
             .filter(
-                ModelLogs.score < TRUST_THRESHOLD,
+                ModelLogs.score > SUSPICIOUS_THRESHOLD,
                 ModelLogs.log_timestamp >= since,
             )
             .scalar()
@@ -136,7 +105,7 @@ class SentinelRepository(BaseRepository):
         watchlist = 0
         fraudulent = 0
         for (score,) in latest_scores:
-            trust_score = round(float(score) * 100)
+            trust_score = round((1.0 - float(score)) * 100)
             if trust_score >= 70:
                 trusted += 1
             elif trust_score >= 40:
@@ -167,13 +136,11 @@ class SentinelRepository(BaseRepository):
                 .first()
             )
 
-            # Instant anomaly score for the table column (1 = fully anomalous).
-            instant_ml_score = float(latest_log.score) if latest_log else 1.0
-            anomaly_score = round(1.0 - instant_ml_score, 4)
+            # Anomaly score direct from the ML model (0 = normal, 1 = fully anomalous).
+            anomaly_score = round(float(latest_log.score), 4) if latest_log else 0.0
 
-            # Trust score: time-weighted rolling average of ML trust scores (0–100).
-            weighted_ml = self._time_weighted_trust_score(pub.publisher_id, as_of)
-            trust_score = round(weighted_ml * 100)
+            # Trust score: (1 - anomaly_score) scaled to 0–100.
+            trust_score = round((1.0 - anomaly_score) * 100)
 
             latest_raw = (
                 self.session.query(RawMetrics)
@@ -201,6 +168,15 @@ class SentinelRepository(BaseRepository):
 
             last_alert = self.get_last_alert_timestamp(pub.publisher_id)
 
+            if latest_raw and latest_raw.conversion_count == 0:
+                status = "Zero Conversions"
+            elif trust_score >= 70:
+                status = "Trusted"
+            elif trust_score >= 40:
+                status = "Watchlist"
+            else:
+                status = "Fraudulent"
+
             result.append(
                 {
                     "publisher_id": str(pub.publisher_id),
@@ -209,7 +185,7 @@ class SentinelRepository(BaseRepository):
                     "anomaly_score": anomaly_score,
                     "ctr": ctr,
                     "cvr": cvr,
-                    "fraud_type": latest_log.fraud_type if latest_log else None,
+                    "status": status,
                     "last_alert_ts": last_alert,
                 }
             )
@@ -221,7 +197,7 @@ class SentinelRepository(BaseRepository):
             self.session.query(ModelLogs.log_timestamp)
             .filter(
                 ModelLogs.publisher_id == publisher_id,
-                ModelLogs.score < TRUST_THRESHOLD,
+                ModelLogs.score > SUSPICIOUS_THRESHOLD,
             )
             .order_by(desc(ModelLogs.log_timestamp))
             .first()
@@ -263,7 +239,7 @@ class SentinelRepository(BaseRepository):
         }
 
         for _, score in latest_scores:
-            ts = round(float(score) * 100)
+            ts = round((1.0 - float(score)) * 100)
             if ts < 20:
                 buckets["0-20"] += 1
             elif ts < 40:
@@ -291,7 +267,7 @@ class SentinelRepository(BaseRepository):
                 func.count().label("events"),
             )
             .filter(
-                ModelLogs.score < TRUST_THRESHOLD,
+                ModelLogs.score > SUSPICIOUS_THRESHOLD,
                 ModelLogs.log_timestamp >= cutoff,
             )
             .group_by(day_col)
@@ -333,7 +309,7 @@ class SentinelRepository(BaseRepository):
             )
             .filter(
                 ModelLogs.publisher_id == publisher_id,
-                ModelLogs.score > ANOMALY_THRESHOLD,
+                ModelLogs.score > EVIDENCE_THRESHOLD,
                 ModelLogs.log_timestamp >= t1,
                 ModelLogs.log_timestamp <= t2,
             )
