@@ -3,7 +3,7 @@ CREATE VIEW publisher_trust_score AS
 
 -- Step 1: Get a unique list of publishers
 WITH Publishers AS (
-    SELECT DISTINCT publisher_id FROM Model_Logs
+    SELECT DISTINCT publisher_id FROM model_logs
 ),
 -- Step 2: Get the newest timestamp for each publisher
 LatestLogs AS (
@@ -11,7 +11,7 @@ LatestLogs AS (
     FROM Publishers p
     CROSS JOIN LATERAL (
         SELECT log_timestamp AS latest_ts
-        FROM Model_Logs m
+        FROM model_logs m
         WHERE m.publisher_id = p.publisher_id
         ORDER BY log_timestamp DESC
         LIMIT 1
@@ -35,7 +35,7 @@ SELECT
 FROM LatestLogs ll
 JOIN LATERAL (
     SELECT score, log_timestamp
-    FROM Model_Logs m
+    FROM model_logs m
     WHERE m.publisher_id = ll.publisher_id
       AND m.log_timestamp >= ll.latest_ts - INTERVAL '24 hours'
       AND m.log_timestamp <= ll.latest_ts

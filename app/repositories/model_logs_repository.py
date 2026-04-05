@@ -3,6 +3,7 @@ from collections.abc import Sequence
 from datetime import datetime
 
 from sqlalchemy import Row, asc
+from sqlalchemy.dialects.postgresql import insert
 
 from app.db.models import ModelLogs, RawMetrics
 from app.repositories.base import BaseRepository
@@ -41,5 +42,6 @@ class ModelLogsRepository(BaseRepository):
         keys = ("log_timestamp", "publisher_id", "model_name", "fraud_type", "score")
         recs = [dict(zip(keys, t)) for t in tuples]
 
-        self.session.bulk_insert_mappings(ModelLogs, recs)
+        stmt = insert(ModelLogs).values(recs).on_conflict_do_nothing()
+        self.session.execute(stmt)
         self.session.flush()
