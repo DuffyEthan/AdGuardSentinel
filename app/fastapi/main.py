@@ -1,17 +1,20 @@
 import uuid
 
 from fastapi import FastAPI, Depends
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from datetime import datetime, timezone, timedelta
 from app.db.session import get_session
 
 from app.db import SessionLocal
-from app.db.models import ModelLogs
-from app.db.models import RawMetrics
+from app.db.models import ModelLogs, Campaigns
+from app.db.models import RawMetrics, Publishers
 from app.repositories.model_logs_repository import ModelLogsRepository
 from app.repositories.raw_metrics_repository import RawMetricsRepository
 from app.repositories.sentinel_repository import SentinelRepository
-from app.fastapi.services.sentinel_service import sentinel_service
+from app.fastapi.services import sentinel_service
 from app.fastapi.services import anomaly_periods_service
+from app.fastapi.services import gemini_service
 
 from app.ml._isolation_forest import run_full_pipeline
 
@@ -23,20 +26,17 @@ from sqlalchemy.orm import sessionmaker
 
 app = FastAPI()
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 @app.get("/")
 def read_root():
     return {"Hello": "World"}
-
-
-@app.get("/model-logs")
-def model_logs_get_between():
-    return {"0": "get-between"}
-
-
-@app.get("/raw-metrics")
-def model_logs_get_between():
-    return {"0": "get-last-n-before"}
 
 
 @app.get("/model-logs/get-between")
@@ -54,6 +54,36 @@ def model_logs_get_between(
     return res
 
 
+@app.get("/publishers")
+def get_publishers(session: Session = Depends(get_session)):
+    rows = session.query(Publishers).all()
+    result = []
+    for pub in rows:
+        # Campaign is linked via raw_metrics (no direct publisher→campaign FK).
+        raw = (
+            session.query(RawMetrics)
+            .filter(RawMetrics.publisher_id == pub.publisher_id)
+            .first()
+        )
+        campaign_id = raw.campaign_id if raw else None
+        campaign = (
+            session.query(Campaigns)
+            .filter(Campaigns.campaign_id == campaign_id)
+            .first()
+            if campaign_id
+            else None
+        )
+        result.append(
+            {
+                "publisher_id": str(pub.publisher_id),
+                "publisher_name": pub.publisher_name,
+                "campaign_id": str(campaign_id) if campaign_id else None,
+                "campaign_name": campaign.campaign_name if campaign else None,
+            }
+        )
+    return result
+
+
 @app.get("/raw-metrics/get-last-n-before")
 def raw_metrics_get_last_n_before(
     t: datetime,
@@ -62,9 +92,20 @@ def raw_metrics_get_last_n_before(
     campaign_id: uuid.UUID | None = None,
     session: Session = Depends(get_session),
 ):
-    return RawMetricsRepository(session).get_last_n_before(
+    rows = RawMetricsRepository(session).get_last_n_before(
         t, n, publisher_id, campaign_id
     )
+    return [
+        {
+            "bucket_timestamp": r.bucket_timestamp.isoformat(),
+            "publisher_id": str(r.publisher_id),
+            "campaign_id": str(r.campaign_id),
+            "impression_count": r.impression_count,
+            "click_count": r.click_count,
+            "conversion_count": r.conversion_count,
+        }
+        for r in rows
+    ]
 
 
 @app.post("/pipeline/train-model")
@@ -82,7 +123,8 @@ def train_model_endpoint(
 
 @app.get("/pipeline/results")
 def get_pipeline_results(
-    publisher_id: str,
+    publisher_id: uuid.UUID,
+    campaign_id: uuid.UUID,
     t1: datetime,
     t2: datetime,
     session: Session = Depends(get_session),
@@ -90,10 +132,14 @@ def get_pipeline_results(
     raw_metrics_repo = RawMetricsRepository(session)
     model_logs_repo = ModelLogsRepository(session)
 
-    all_raw_metrics = raw_metrics_repo.get_last_n_before(t2, 1000, publisher_id)
+    all_raw_metrics = raw_metrics_repo.get_last_n_before(
+        t2, 1000, publisher_id, campaign_id
+    )
     raw_metrics = [m for m in all_raw_metrics if t1 <= m.bucket_timestamp <= t2]
 
-    model_predictions_data = model_logs_repo.get_between(t1, t2, publisher_id)
+    model_predictions_data = model_logs_repo.get_between(
+        t1, t2, publisher_id, campaign_id
+    )
     model_predictions = []
     for pred_tuple in model_predictions_data:
         model_predictions.append(vars(pred_tuple[0]) | vars(pred_tuple[1]))
@@ -119,10 +165,11 @@ def sentinel_stats(
     since: datetime | None = None,
     session: Session = Depends(get_session),
 ):
-    if since is None:
-        since = datetime.now(timezone.utc) - timedelta(hours=24)
-
     repo = SentinelRepository(session)
+    sim_time = repo.get_sim_time()
+    if since is None:
+        since = sim_time - timedelta(hours=24)
+
     return {
         "publisher_count": repo.get_publisher_count(),
         "suspicious_publisher_count": repo.get_suspicious_publisher_count(since),
@@ -137,10 +184,10 @@ def sentinel_publishers(
     as_of: datetime | None = None,
     session: Session = Depends(get_session),
 ):
-    if as_of is None:
-        as_of = datetime.now(timezone.utc)
-
     repo = SentinelRepository(session)
+    if as_of is None:
+        as_of = repo.get_sim_time()
+
     return repo.get_publisher_trust_summary(as_of)
 
 
@@ -149,10 +196,10 @@ def sentinel_trust_distribution(
     as_of: datetime | None = None,
     session: Session = Depends(get_session),
 ):
-    if as_of is None:
-        as_of = datetime.now(timezone.utc)
-
     repo = SentinelRepository(session)
+    if as_of is None:
+        as_of = repo.get_sim_time()
+
     return repo.get_trust_score_distribution(as_of)
 
 
@@ -171,8 +218,9 @@ def sentinel_explain(
     as_of: datetime | None = None,
     session: Session = Depends(get_session),
 ):
+    repo = SentinelRepository(session)
     if as_of is None:
-        as_of = datetime.now(timezone.utc)
+        as_of = repo.get_sim_time()
 
     return sentinel_service.get_trust_score_explanation(session, publisher_id, as_of)
 
@@ -194,10 +242,80 @@ def sentinel_compare(
     as_of: datetime | None = None,
     session: Session = Depends(get_session),
 ):
+    repo = SentinelRepository(session)
     if as_of is None:
-        as_of = datetime.now(timezone.utc)
+        as_of = repo.get_sim_time()
 
     return sentinel_service.compare_publisher_to_network(session, publisher_id, as_of)
+
+
+# ── Sentinel Assistant Chat (Gemini) ────────────────────────────────────
+
+
+class ChatHistoryItem(BaseModel):
+    role: str
+    content: str
+
+
+class ChatRequest(BaseModel):
+    message: str
+    context: dict | None = None
+    history: list[ChatHistoryItem] | None = None
+    action: str | None = None  # "explain" | "evidence" | "compare" | None
+    publisher_id: str | None = None
+
+
+@app.post("/sentinel/assistant/chat")
+def sentinel_chat(
+    req: ChatRequest,
+    session: Session = Depends(get_session),
+):
+    """
+    Send a message to the Sentinel Assistant powered by Gemini.
+
+    For preset actions (explain, evidence, compare), we first fetch the
+    structured data from the existing backend services and include it as
+    context for the Gemini call so the response is grounded in real data.
+    """
+    context = dict(req.context or {})
+    history = [h.model_dump() for h in (req.history or [])]
+
+    # If a preset action was used and we have a publisher_id, enrich context
+    if req.publisher_id and req.action:
+        try:
+            pub_uuid = uuid.UUID(req.publisher_id)
+            repo = SentinelRepository(session)
+            as_of = repo.get_sim_time()
+
+            if req.action == "explain":
+                explanation = sentinel_service.get_trust_score_explanation(
+                    session, pub_uuid, as_of
+                )
+                context["explanation"] = explanation
+
+            elif req.action == "compare":
+                comparison = sentinel_service.compare_publisher_to_network(
+                    session, pub_uuid, as_of
+                )
+                context["comparison"] = comparison
+
+            elif req.action == "evidence":
+                # Get evidence for the last 24 hours
+                t2 = as_of
+                t1 = as_of - timedelta(hours=24)
+                evidence = repo.get_anomaly_evidence(pub_uuid, t1, t2)
+                context["evidence"] = evidence
+
+        except Exception:
+            pass  # Fall through – Gemini will answer with whatever context we have
+
+    result = gemini_service.chat(
+        message=req.message,
+        context=context,
+        history=history,
+    )
+
+    return result
 
 
 # ── Anomaly Periods Endpoints ───────────────────────────────────────────
@@ -245,4 +363,3 @@ def backfill_anomaly_periods(
             for p in periods
         ],
     }
-

@@ -20,22 +20,25 @@ class TestGetTrustScoreExplanation:
     def test_pub1_name_and_score(self, db_session, seed_data):
         result = get_trust_score_explanation(db_session, PUB1_ID, AS_OF)
         assert result["publisher_name"] == "Acme Ads"
-        assert result["trust_score"] == 88
+        # Trust score from view (quadratic-decay weighted): ≈65
+        assert result["trust_score"] == 65
+        # anomaly_score = model_logs.score directly
         assert abs(result["anomaly_score"] - 0.12) < 0.01
 
     def test_pub1_has_findings(self, db_session, seed_data):
         # PUB1 has derived_metrics so findings should include CTR/CVR comparisons
+        # View-based trust≈65 (< 70) -> classified as Watchlist
         result = get_trust_score_explanation(db_session, PUB1_ID, AS_OF)
         assert len(result["findings"]) > 0
         findings_text = " ".join(result["findings"])
         assert "CTR" in findings_text
-        assert "Trusted" in findings_text
+        assert "Watchlist" in findings_text
 
     def test_pub2_insufficient_derived(self, db_session, seed_data):
-        # PUB2 has no derived_metrics
+        # PUB2 has no derived_metrics; view-based trust≈50
         result = get_trust_score_explanation(db_session, PUB2_ID, AS_OF)
         assert result["publisher_name"] == "BrightMedia"
-        assert result["trust_score"] == 55
+        assert result["trust_score"] == 50
         findings_text = " ".join(result["findings"])
         assert "Insufficient" in findings_text or "Watchlist" in findings_text
 

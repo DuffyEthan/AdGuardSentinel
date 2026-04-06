@@ -9,11 +9,56 @@ import joblib
 from sklearn.preprocessing import MinMaxScaler
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
+import uuid
 from app.db.session import get_session
+
+
+def fetch_derived_metrics(session: Session, start_date, end_date, publisher_id=None) -> pd.DataFrame:
+    from app.repositories.derived_metrics_repository import DerivedMetricsRepository
+    repo = DerivedMetricsRepository(session)
+
+    rows = repo.get_last_n_before(
+        t=end_date,
+        n=200,
+        publisher_id=uuid.UUID(publisher_id) if publisher_id else None
+    )
+
+    filtered_rows = [r for r in rows if r.bucket_timestamp >= start_date]
+
+    data = []
+    for row in filtered_rows:
+        data.append({
+            'bucket_timestamp': row.bucket_timestamp,
+            'publisher_id': str(row.publisher_id),
+            'campaign_id': str(row.campaign_id) if row.campaign_id else None,
+            'impressions_mean': row.impressions_mean,
+            'clicks_mean': row.clicks_mean,
+            'conversions_mean': row.conversions_mean,
+            'impressions_std': row.impressions_std,
+            'clicks_std': row.clicks_std,
+            'conversions_std': row.conversions_std,
+            'impressions_weighted_mean': row.impressions_weighted_mean,
+            'clicks_weighted_mean': row.clicks_weighted_mean,
+            'conversions_weighted_mean': row.conversions_weighted_mean,
+            'sample_size': row.sample_size
+        })
+
+    df = pd.DataFrame(data)
+    if not df.empty:
+        df['bucket_timestamp'] = pd.to_datetime(df['bucket_timestamp'])
+    return df
+
+
+def fetch_and_merge(session: Session, start_date, end_date, publisher_id=None) -> pd.DataFrame:
+    raw = fetch_raw_data(session, start_date, end_date, publisher_id)
+    derived = fetch_derived_metrics(session, start_date, end_date, publisher_id)
+    return raw.merge(derived, on=['bucket_timestamp', 'publisher_id'], how='inner')
+
 
 
 def fetch_raw_data(session: Session, start_date, end_date, publisher_id=None):
     """
+    USING DERIVED METRICS NOW
     fetching raw metrics from the database.
     
     visualisation :
@@ -118,79 +163,46 @@ def cvr_calculation(conversions: int, total_visitors: int):
 
 
 
-# features from raw data for the isolation forest
+# features from raw + pre-computed derived metrics
 def compute_features(df):
-    features = df.copy()  # copying raw data for the isolation forest
-    
-    # calculate CTR and CVR
-    features['ctr'] = np.where(features['impression_count'] > 0, features['click_count'] / features['impression_count'], 0.0)
-    #                          condition,                        if condition is true,                                   if condition is false
-    
-    features['cvr'] = np.where(features['click_count'] > 0, features['conversion_count'] / features['click_count'], 0.0)
-    #                          condition,                   if condition is true,                                   if condition is false
-
-    # sorting by timestamp (from oldest to newest)
+    features = df.copy()
     features = features.sort_values('bucket_timestamp')
-    
-    # rolling statistics (window of 5 hours -> looking at the last 5 rows)
-    features['ctr_rolling_mean'] = features['ctr'].rolling(window=5, min_periods=1).mean()
-    features['ctr_rolling_std'] = features['ctr'].rolling(window=5, min_periods=1).std().fillna(0)
-    
-    # deviation from rolling mean
-    features['ctr_deviation'] = np.abs(features['ctr'] - features['ctr_rolling_mean'])
-    
-    # Impression volume patterns
-    features['impression_rolling_mean'] = features['impression_count'].rolling(window=5, min_periods=1).mean()
-    features['impression_ratio'] = np.where(features['impression_rolling_mean'] > 0, features['impression_count'] / features['impression_rolling_mean'], 1.0)
-    
 
-    # IMPRESSION FRAUD FEATURES:
+    # CTR/CVR from raw counts
+    features['ctr'] = np.where(features['impression_count'] > 0, features['click_count'] / features['impression_count'], 0.0)
+    features['cvr'] = np.where(features['click_count'] > 0, features['conversion_count'] / features['click_count'], 0.0)
 
-    # change in impressions between consecutive hours
+    # expected CTR/CVR from pre-computed rolling means
+    ctr_mean = np.where(features['impressions_mean'] > 0, features['clicks_mean'] / features['impressions_mean'], 0.0)
+    cvr_mean = np.where(features['clicks_mean'] > 0, features['conversions_mean'] / features['clicks_mean'], 0.0)
+
+    # CTR deviation from the pre-computed rolling mean
+    features['ctr_rolling_mean'] = ctr_mean
+    features['ctr_rolling_std'] = np.where(
+        features['impressions_mean'] > 0,
+        features['clicks_std'] / features['impressions_mean'],
+        0.0
+    )
+    features['ctr_deviation'] = np.abs(features['ctr'] - ctr_mean)
+
+    # IMPRESSION FRAUD — pre-computed mean is the rolling average
+    features['impression_ratio'] = np.where(features['impressions_mean'] > 0, features['impression_count'] / features['impressions_mean'], 1.0)
     features['impression_velocity'] = features['impression_count'].diff().fillna(0)
-    
-    # current impressions compared to 5 hour rolling average
-    features['impression_spike_ratio'] = np.where(
-        features['impression_rolling_mean'] > 0,
-        features['impression_count'] / features['impression_rolling_mean'],
-        1.0
-    )
-    
-    # standard deviation of impressions over 24h, measures traffic stability
-    features['impression_volatility'] = features['impression_count'].rolling(
-        window=24,
-        min_periods=1
-    ).std().fillna(0)
-    
-    # flag for impressions exceeding 10x the rolling average
-    features['abnormal_volume'] = np.where(
-        features['impression_count'] > features['impression_rolling_mean'] * 10,
-        1,
-        0
-    )
+    features['impression_spike_ratio'] = features['impression_ratio']  # same signal
+    features['impression_volatility'] = features['impressions_std']    # pre-computed
+    features['abnormal_volume'] = np.where(features['impression_count'] > features['impressions_mean'] * 10, 1, 0)
 
-    # CLICK INJECTION FRAUD:
+    # CLICK INJECTION — use pre-computed CVR mean as baseline
+    features['cvr_spike_ratio'] = np.where(cvr_mean > 0, features['cvr'] / cvr_mean, 1.0)
+    features['suspicious_cvr'] = np.where(features['cvr'] > cvr_mean * 3, 1, 0)
 
-    # current conversion rate compared to 5-hour rolling average
-    features['cvr_spike_ratio'] = np.where(
-        features['cvr'].rolling(window=5, min_periods=1).mean() > 0,
-        features['cvr'] / features['cvr'].rolling(window=5, min_periods=1).mean(),
-        1.0
-    )
-    
-    # flag for conversions exceeding 3x the weekly average
-    features['suspicious_cvr'] = np.where(
-        features['cvr'] > features['cvr'].rolling(window=168, min_periods=1).mean() * 3,
-        1,
-        0
-    )
-    
-    # proportion of daily conversions concentrated in current hour
-    features['conversion_clustering'] = (
-        features['conversion_count'].rolling(window=1).sum() /
-        features['conversion_count'].rolling(window=24, min_periods=1).sum().replace(0, 1)
-    )
-    
+    # conversion clustering: share of the rolling daily expectation
+    daily_expected = features['conversions_mean'] * 24
+    features['conversion_clustering'] = np.where(daily_expected > 0, features['conversion_count'] / daily_expected, 0.0)
+
+    features = features.fillna(0)
+    features = features.replace([np.inf, -np.inf], 0)
+
     return features
 
 # isolation forest anomaly detection 
@@ -210,7 +222,7 @@ class AnomalyDetection:
         )
         self.is_fitted = False
         
-        # features for the model 
+        # features for the model
         self.feature_cols = [
             'ctr',
             'cvr',
@@ -218,14 +230,26 @@ class AnomalyDetection:
             'ctr_rolling_std',
             'ctr_deviation',
             'impression_count',
+            'impressions_mean',
+            'impressions_std',
+            'impressions_weighted_mean',
             'impression_ratio',
             'impression_velocity',
             'impression_spike_ratio',
             'impression_volatility',
-            'abnormal_volume', 
-            'cvr_spike_ratio', 
-            'suspicious_cvr',  
-            'conversion_clustering'  
+            'abnormal_volume',
+            'click_count',
+            'clicks_mean',
+            'clicks_std',
+            'clicks_weighted_mean',
+            'conversion_count',
+            'conversions_mean',
+            'conversions_std',
+            'conversions_weighted_mean',
+            'sample_size',
+            'cvr_spike_ratio',
+            'suspicious_cvr',
+            'conversion_clustering',
         ]
     
     def fit(self, df):
@@ -314,6 +338,15 @@ class CTRFraudDetection(AnomalyDetection):
             'ctr_rolling_mean',
             'ctr_rolling_std',
             'ctr_deviation',
+            'click_count',
+            'clicks_mean',
+            'clicks_std',
+            'clicks_weighted_mean',
+            'impression_count',
+            'impressions_mean',
+            'impressions_std',
+            'impressions_weighted_mean',
+            'sample_size',
         ]
 
 class ImpressionFraudDetection(AnomalyDetection):
@@ -325,11 +358,15 @@ class ImpressionFraudDetection(AnomalyDetection):
         # impression-related features
         self.feature_cols = [
             'impression_count',
+            'impressions_mean',
+            'impressions_std',
+            'impressions_weighted_mean',
             'impression_ratio',
             'impression_velocity',
             'impression_spike_ratio',
             'impression_volatility',
             'abnormal_volume',
+            'sample_size',
         ]
 
 
@@ -347,6 +384,14 @@ class ClickInjectionDetection(AnomalyDetection):
             'cvr_spike_ratio',
             'suspicious_cvr',
             'conversion_clustering',
+            'conversion_count',
+            'conversions_mean',
+            'conversions_std',
+            'conversions_weighted_mean',
+            'click_count',
+            'clicks_mean',
+            'clicks_std',
+            'sample_size',
         ]
 
 
@@ -476,7 +521,7 @@ def run_full_pipeline(
     start_date,
     end_date,
     publisher_id = None,
-    model_name: str = "isolation_forest_v1",
+    model_name: str = "isolation_forest_v2",
     contamination: float = 0.05,
     threshold: float = 0.7
 ) -> dict:
@@ -488,10 +533,10 @@ def run_full_pipeline(
 
     # wrap in try/except
     try:
-        # fetch raw data from database
-        raw_data = fetch_raw_data(session, start_date, end_date, publisher_id)
-        
-        if raw_data.empty:
+        # fetch and merge raw + pre-computed derived metrics
+        data = fetch_and_merge(session, start_date, end_date, publisher_id)
+
+        if data.empty:
             return {
                 "status": "error",
                 "error_message": "No data found for the specified date range"
@@ -501,19 +546,18 @@ def run_full_pipeline(
         
         # train the model and get predictions
         predictions = train_isolation_forest(
-            raw_data, 
-            contamination=contamination, 
+            data,
+            contamination=contamination,
             threshold=threshold
         )
-        
-        
+
         # log results back to database
         log_results_to_db(session, predictions, model_name=model_name)
-                
+
         # return success dictionary with details
         return {
             "status": "success",
-            "records_processed": len(raw_data),
+            "records_processed": len(data),
             "records_logged": len(predictions)
         }
     
@@ -529,8 +573,24 @@ def run_full_pipeline(
 
 
 
+def convert_raw_to_derived(df: pd.DataFrame) -> pd.DataFrame:
+    """Compute derived metrics from raw counts (used for training with synthetic data)."""
+    derived = df.copy().sort_values('bucket_timestamp')
 
+    window = 24
+    for raw_col, prefix in [
+        ('impression_count', 'impressions'),
+        ('click_count', 'clicks'),
+        ('conversion_count', 'conversions'),
+    ]:
+        derived[f'{prefix}_mean'] = derived[raw_col].rolling(window=window, min_periods=1).mean()
+        derived[f'{prefix}_std'] = derived[raw_col].rolling(window=window, min_periods=1).std().fillna(0)
+        derived[f'{prefix}_weighted_mean'] = derived[f'{prefix}_mean']  # equal weights for synthetic data
 
+    derived['sample_size'] = derived['impression_count'].rolling(window=window, min_periods=1).count()
+    derived['campaign_id'] = 'test_campaign'
+
+    return derived
 
 
 # TRAINING AND FREEZING THE MODELS
@@ -550,7 +610,7 @@ if __name__ == "__main__":
         for hour in range(200):
             timestamp = start_time + timedelta(hours=hour)
             settings = {'timestamp': timestamp}
-            ts, impressions, clicks, conversions = publisher.publisher_data_next(settings)
+            ts, impressions, clicks, conversions = publisher["generator"].publisher_data_next(settings)
             
             data.append({
                 'bucket_timestamp': ts,
@@ -562,10 +622,10 @@ if __name__ == "__main__":
     
     df = pd.DataFrame(data)
     
-    df_features = compute_features(df)
-    
+    df_derived = convert_raw_to_derived(df)
+
     predictions, (ctr_model, impression_model, click_model) = train_multiple_detection_model(
-        df_features,
+        df_derived,
         contamination=0.1,
         threshold=0.7
     )

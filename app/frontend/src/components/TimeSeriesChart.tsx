@@ -5,6 +5,7 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
+  Legend,
   ResponsiveContainer,
 } from 'recharts';
 import { useTheme } from '../context/ThemeContext';
@@ -12,10 +13,10 @@ import { renderAnomalyAreas } from './AnomalyArea';
 import type { AnomalyEvent } from './AnomalyArea';
 
 interface DataPoint {
-  x: number;
-  impressions: number;
-  clicks: number;
-  conversions: number;
+  x: number; // Unix ms timestamp
+  impression_count: number;
+  click_count: number;
+  conversion_count: number;
 }
 
 interface TimeSeriesChartProps {
@@ -75,18 +76,21 @@ function TimeSeriesChart({ data, publisher, anomalies = [] }: TimeSeriesChartPro
           <XAxis
             dataKey="x"
             type="number"
-            domain={[0, 99]}
+            scale="time"
+            domain={['dataMin', 'dataMax']}
             stroke={colors.axis}
             tick={{ fill: colors.axis, fontSize: 12 }}
-            tickCount={10}
-            tickFormatter={(value) => value.toFixed(0)}
-            label={{ value: 'Time Step', position: 'bottom', fill: colors.axis, offset: 10 }}
+            tickCount={8}
+            tickFormatter={(value) => new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            label={{ value: 'Time', position: 'bottom', fill: colors.axis, offset: 10 }}
           />
           <YAxis
+            scale="log"
+            domain={[1, (max: number) => max * 2]}
             stroke={colors.axis}
             tick={{ fill: colors.axis, fontSize: 12 }}
-            domain={[0, (max: number) => Math.ceil(max)]}
-            label={{ value: 'Count', angle: -90, position: 'insideLeft', fill: colors.axis }}
+            allowDataOverflow
+            label={{ value: 'Count (log)', angle: -90, position: 'insideLeft', fill: colors.axis }}
           />
           <Tooltip
             contentStyle={{
@@ -97,37 +101,50 @@ function TimeSeriesChart({ data, publisher, anomalies = [] }: TimeSeriesChartPro
             }}
             formatter={(value, name) => {
               const labels: Record<string, string> = {
-                impressions: 'Impressions',
-                clicks: 'Clicks',
-                conversions: 'Conversions',
+                impression_count: 'Impressions',
+                click_count: 'Clicks',
+                conversion_count: 'Conversions',
               };
               return [(value as number).toFixed(0), labels[name as string] ?? name];
             }}
-            labelFormatter={(label) => `t: ${label}`}
+            labelFormatter={(label) => new Date(label as number).toLocaleString()}
+          />
+          <Legend
+            formatter={(value) => {
+              const labels: Record<string, string> = {
+                impression_count: 'Impressions',
+                click_count: 'Clicks',
+                conversion_count: 'Conversions',
+              };
+              return labels[value] ?? value;
+            }}
           />
           {renderAnomalyAreas(anomalies)}
           <Line
             type="monotone"
-            dataKey="impressions"
+            dataKey="impression_count"
             stroke={colors.line1}
             strokeWidth={2.5}
             dot={false}
+            isAnimationActive={false}
             activeDot={{ r: 4, fill: colors.dot }}
           />
           <Line
             type="monotone"
-            dataKey="clicks"
+            dataKey="click_count"
             stroke={colors.line2}
             strokeWidth={2.5}
             dot={false}
+            isAnimationActive={false}
             activeDot={{ r: 4, fill: colors.dot }}
           />
           <Line
             type="monotone"
-            dataKey="conversions"
+            dataKey="conversion_count"
             stroke={colors.line3}
             strokeWidth={2.5}
             dot={false}
+            isAnimationActive={false}
             activeDot={{ r: 4, fill: colors.dot }}
           />
         </LineChart>

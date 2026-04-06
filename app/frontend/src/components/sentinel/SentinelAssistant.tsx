@@ -10,6 +10,7 @@ interface SentinelAssistantProps {
   onCompareNetwork: () => void;
   messages: ChatMessage[];
   onSendMessage: (text: string) => void;
+  isLoading?: boolean;
 }
 
 function SentinelAssistant({
@@ -21,17 +22,21 @@ function SentinelAssistant({
   onCompareNetwork,
   messages,
   onSendMessage,
+  isLoading = false,
 }: SentinelAssistantProps) {
   const [input, setInput] = useState('');
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Auto-scroll to bottom when messages change or loading state changes
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages, isLoading]);
 
   function handleSend() {
     const trimmed = input.trim();
-    if (!trimmed) return;
+    if (!trimmed || isLoading) return;
     onSendMessage(trimmed);
     setInput('');
   }
@@ -45,11 +50,13 @@ function SentinelAssistant({
 
   return (
     <div className="panel sentinel-assistant">
+      {/* Header */}
       <div className="sentinel-assistant__header">
         <span className="sentinel-assistant__dot" />
         <h3 className="panel-title sentinel-assistant__title">Sentinel Assistant</h3>
       </div>
 
+      {/* Publisher selector */}
       <select
         className="sentinel-assistant__select"
         value={selectedPublisher}
@@ -60,25 +67,45 @@ function SentinelAssistant({
         ))}
       </select>
 
+      {/* Preset action buttons */}
       <div className="sentinel-assistant__actions">
-        <button className="sentinel-action-btn" onClick={onExplainTrust}>
+        <button
+          className="sentinel-action-btn"
+          onClick={onExplainTrust}
+          disabled={isLoading}
+        >
           Explain trust score for <em>{selectedPublisher}</em>
-          <span className="sentinel-action-chevron">›</span>
+          <span className="sentinel-action-chevron">&#8250;</span>
         </button>
-        <button className="sentinel-action-btn" onClick={onShowAnomalies}>
+        <button
+          className="sentinel-action-btn"
+          onClick={onShowAnomalies}
+          disabled={isLoading}
+        >
           Show anomalies &amp; evidence
-          <span className="sentinel-action-chevron">›</span>
+          <span className="sentinel-action-chevron">&#8250;</span>
         </button>
-        <button className="sentinel-action-btn" onClick={onCompareNetwork}>
+        <button
+          className="sentinel-action-btn"
+          onClick={onCompareNetwork}
+          disabled={isLoading}
+        >
           Compare against network
-          <span className="sentinel-action-chevron">›</span>
+          <span className="sentinel-action-chevron">&#8250;</span>
         </button>
       </div>
 
-      <div className="sentinel-assistant__messages" ref={messagesEndRef}>
+      {/* Messages area */}
+      <div className="sentinel-assistant__messages" ref={scrollRef}>
         {messages.map((msg, i) => (
-          <div key={i} className={`sentinel-message sentinel-message--${msg.role}${msg.isWarning ? ' sentinel-message--warning' : ''}`}>
-            {msg.isWarning && <span className="sentinel-message__warn-icon">⚠</span>}
+          <div
+            key={i}
+            className={
+              `sentinel-message sentinel-message--${msg.role}` +
+              (msg.isWarning ? ' sentinel-message--warning' : '')
+            }
+          >
+            {msg.isWarning && <span className="sentinel-message__warn-icon">&#9888;</span>}
             <p className="sentinel-message__text">{msg.content}</p>
             {msg.bullets && msg.bullets.length > 0 && (
               <ul className="sentinel-message__bullets">
@@ -87,9 +114,20 @@ function SentinelAssistant({
             )}
           </div>
         ))}
-        <div ref={messagesEndRef} />
+
+        {/* Typing indicator */}
+        {isLoading && (
+          <div className="sentinel-message sentinel-message--assistant sentinel-typing">
+            <div className="sentinel-typing__dots">
+              <span />
+              <span />
+              <span />
+            </div>
+          </div>
+        )}
       </div>
 
+      {/* Input area */}
       <div className="sentinel-assistant__input">
         <input
           className="sentinel-input"
@@ -98,9 +136,14 @@ function SentinelAssistant({
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
+          disabled={isLoading}
         />
-        <button className="btn btn--inline sentinel-send-btn" onClick={handleSend}>
-          Send
+        <button
+          className="btn btn--inline sentinel-send-btn"
+          onClick={handleSend}
+          disabled={isLoading || !input.trim()}
+        >
+          {isLoading ? '...' : 'Send'}
         </button>
       </div>
     </div>

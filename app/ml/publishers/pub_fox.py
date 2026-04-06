@@ -54,3 +54,6 @@ fox_graph = {
 }
 
 pub_fox = MarkovDataGenerator.from_dict(fox_graph, "normal")
+
+# Stationary fraud fraction: π(impression_fraud) = p/(p+q) = 0.08/(0.08+0.10) ≈ 0.4444
+FRAUD_STATE_PROBABILITY = {'ctr_fraud': 0.0, 'impression_fraud': 0.4444, 'click_injection': 0.0}

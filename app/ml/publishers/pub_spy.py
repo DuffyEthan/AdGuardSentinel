@@ -29,3 +29,6 @@ spy_graph = {
 }
 
 pub_spy = MarkovDataGenerator.from_dict(spy_graph, "normal")
+
+# Stationary fraud fractions — all zero (single normal state)
+FRAUD_STATE_PROBABILITY = {'ctr_fraud': 0.0, 'impression_fraud': 0.0, 'click_injection': 0.0}
