@@ -24,6 +24,35 @@ from app.ml.publishers import publisher_catalog
 
 load_dotenv()
 
+def upsert_raw_metrics(session: Session, data_frame: pd.DataFrame) -> int:
+    """Insert or update a batch into raw_metrics (rerunnable via ON CONFLICT)."""
+    rows = [
+        {
+            "bucket_timestamp": row.bucket_timestamp,
+            "publisher_id": row.publisher_id,
+            "campaign_id": row.campaign_id,
+            "impression_count": int(row.impression_count),
+            "click_count": int(row.click_count),
+            "conversion_count": int(row.conversion_count),
+        }
+        for row in data_frame.itertuples(index=False)
+    ]
+
+    if not rows:
+        return 0
+
+    stmt = insert(RawMetrics).values(rows)
+    stmt = stmt.on_conflict_do_update(
+        constraint="raw_metrics_pkey",
+        set_={
+            "impression_count": stmt.excluded.impression_count,
+            "click_count": stmt.excluded.click_count,
+            "conversion_count": stmt.excluded.conversion_count,
+        },
+    )
+    session.execute(stmt)
+    session.flush()
+    return len(rows)
 
 @dataclass(frozen=True)
 class GeneratorConfig:
