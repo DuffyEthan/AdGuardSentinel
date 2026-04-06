@@ -5,60 +5,26 @@
 import pandas as pd
 import numpy as np
 from sklearn.ensemble import IsolationForest
+import psycopg2
+from psycopg2 import sql
 import joblib
-from sklearn.preprocessing import MinMaxScaler
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import Session
-import uuid
 
 
-def fetch_derived_metrics(session: Session, start_date, end_date, publisher_id=None) -> pd.DataFrame:
-    from app.db.session import get_session
-    from app.repositories.derived_metrics_repository import DerivedMetricsRepository
-    repo = DerivedMetricsRepository(session)
-    
-    # fetch data 
-    rows = repo.get_last_n_before(
-        t=end_date,
-        n=200,  # Get last 200 hours of data
-        publisher_id=uuid.UUID(publisher_id) if publisher_id else None
-    )
-    
-    # filter to only include rows >= start_date
-    filtered_rows = [r for r in rows if r.bucket_timestamp >= start_date]
-    
-    # convert to DataFrame
-    data = []
-    for row in filtered_rows:
-        data.append({
-            'bucket_timestamp': row.bucket_timestamp,
-            'publisher_id': str(row.publisher_id),
-            'campaign_id': str(row.campaign_id) if row.campaign_id else None,
-            'impressions_mean': row.impressions_mean,
-            'clicks_mean': row.clicks_mean,
-            'conversions_mean': row.conversions_mean,
-            'impressions_std': row.impressions_std,
-            'clicks_std': row.clicks_std,
-            'conversions_std': row.conversions_std,
-            'impressions_weighted_mean': row.impressions_weighted_mean,
-            'clicks_weighted_mean': row.clicks_weighted_mean,
-            'conversions_weighted_mean': row.conversions_weighted_mean,
-            'sample_size': row.sample_size
-        })
-    
-    df = pd.DataFrame(data)
-    
-    # convert timestamp to datetime if needed
-    if not df.empty:
-        df['bucket_timestamp'] = pd.to_datetime(df['bucket_timestamp'])
-    
-    return df
+# db settings - from db pod
+DB_CONFIG = {
+    'host': 'db',       
+    'database': 'ad_metrics',   
+    'user': 'postgres',        
+    'password': '123456789', 
+    'port': 5432                
+}
 
 
-def fetch_raw_data(session: Session, start_date, end_date, publisher_id=None):
+def fetch_raw_data(start_date, end_date, publisher_id=None):
     """
-    USING DERIVED METRICS NOW
     fetching raw metrics from the database.
+    Batch Generator has inserted data into raw_metrics table
+    using pandas read_sql() to get it
     
     visualisation :
     batch generator
@@ -73,7 +39,6 @@ postgres raw_metrics table
   isolation forest fit()
 
     Arguments:
-        session = SQLAlchemy session
         start_date = start timestamp
         end_date = end timestamp 
         publisher_id = optional (filter by specific publisher)
@@ -81,71 +46,91 @@ postgres raw_metrics table
 
         It's returning DataFrame with columns: bucket_timestamp, publisher_id, 
                                 impression_count, click_count, conversion_count
-    """    
+    """
+    # connecting to PostgreSQL
+    conn = psycopg2.connect(**DB_CONFIG)
+    
     # building SQL query
     if publisher_id is None:
         # get data for all publishers
-        query = text("""
+        query = """
             SELECT bucket_timestamp, publisher_id, impression_count, 
                    click_count, conversion_count
             FROM raw_metrics
-            WHERE bucket_timestamp >= :start_date AND bucket_timestamp < :end_date
+            WHERE bucket_timestamp >= %s AND bucket_timestamp < %s
             ORDER BY publisher_id, bucket_timestamp
-        """)
-        params = {'start_date': start_date, 'end_date': end_date}
+        """
+        params = (start_date, end_date)
     else:
-        query = text("""
+        # get data for specific publisher
+        query = """
             SELECT bucket_timestamp, publisher_id, impression_count, 
                    click_count, conversion_count
             FROM raw_metrics
-            WHERE bucket_timestamp >= :start_date AND bucket_timestamp < :end_date
-              AND publisher_id = :publisher_id
+            WHERE bucket_timestamp >= %s AND bucket_timestamp < %s
+              AND publisher_id = %s
             ORDER BY bucket_timestamp
-        """)
-        params = {'start_date': start_date, 'end_date': end_date, 'publisher_id': publisher_id}
-    
+        """
+        params = (start_date, end_date, publisher_id)
     
     # use pandas to read SQL query into DataFrame
-    df = pd.read_sql(query, session.bind, params=params)
+    df = pd.read_sql(query, conn, params=params)
+    
+    # closing connection
+    conn.close()
     
     return df
 
 
-def log_results_to_db(session: Session, predictions, model_name="isolation_forest_v1"):
+def log_results_to_db(predictions, model_name="isolation_forest_v1"):
     """
     logs model predictions back to the database
     inserts into model_logs table
     
     Arguments:
-        session: SQLAlchemy session
         predictions = DataFrame with columns including bucket_timestamp, 
-                     publisher_id, trust_score
+                     publisher_id, anomaly_score
         model_name = name of the model (default: "isolation_forest_v1")
     """
-    # Insert query with ON CONFLICT
-    insert_query = text("""
+    # connecting to PostgreSQL
+    conn = psycopg2.connect(**DB_CONFIG)
+    cur = conn.cursor()
+    
+    # preparing data for insertion and converting DataFrame to list of tuples
+    records = []
+    for _, row in predictions.iterrows():
+        # get fraud type (if column exists, otherwise default to 'unknown')
+        fraud_type = row.get('primary_fraud_type', 'unknown')
+        
+        records.append((
+            row['bucket_timestamp'],
+            int(row['publisher_id']),
+            model_name,
+            float(row['anomaly_score']),
+            fraud_type  # Add fraud type to log
+        ))
+    
+    # inserting into model_logs table
+    insert_query = """
         INSERT INTO model_logs (log_timestamp, publisher_id, model_name, score, fraud_type)
-        VALUES (:log_timestamp, :publisher_id, :model_name, :score, :fraud_type)
+        VALUES (%s, %s, %s, %s, %s)
         ON CONFLICT (publisher_id, log_timestamp) 
         DO UPDATE SET 
             score = EXCLUDED.score,
             model_name = EXCLUDED.model_name,
             fraud_type = EXCLUDED.fraud_type
-    """)
-    for _, row in predictions.iterrows():
-        # get fraud type (if column exists, otherwise default to 'unknown')
-        fraud_type = row.get('primary_fraud_type', 'unknown')
-        
-        session.execute(insert_query, {
-            'log_timestamp': row['bucket_timestamp'],
-            'publisher_id': int(row['publisher_id']),
-            'model_name': model_name,
-            'score': float(row['anomaly_score']),
-            'fraud_type': fraud_type
-        })
+    """
     
-    # Commit changes
-    session.commit()
+    
+    # executing batch insert
+    cur.executemany(insert_query, records)
+    
+    # committing changes
+    conn.commit()
+    
+    # closing connection
+    cur.close()
+    conn.close()
     
 
 
@@ -164,60 +149,76 @@ def cvr_calculation(conversions: int, total_visitors: int):
 
 # features from raw data for the isolation forest
 def compute_features(df):
-    features = df.copy()  # copying raw data for the isolation forest  
+    features = df.copy()  # copying raw data for the isolation forest
+    
+    # calculate CTR and CVR
+    features['ctr'] = np.where(features['impression_count'] > 0, features['click_count'] / features['impression_count'], 0.0)
+    #                          condition,                        if condition is true,                                   if condition is false
+    
+    features['cvr'] = np.where(features['click_count'] > 0, features['conversion_count'] / features['click_count'], 0.0)
+    #                          condition,                   if condition is true,                                   if condition is false
+
+    # sorting by timestamp (from oldest to newest)
     features = features.sort_values('bucket_timestamp')
-
-   # CTRusing mean values
-    features['ctr'] = np.where(features['impressions_mean'] > 0, features['clicks_mean'] / features['impressions_mean'], 0.0)
     
-    #CVR using mean values
-    features['cvr'] = np.where(features['clicks_mean'] > 0, features['conversions_mean'] / features['clicks_mean'], 0.0)
-    
-    # CTR
-
-    # Rolling statistics for CTR (5-hour window)
+    # rolling statistics (window of 5 hours -> looking at the last 5 rows)
     features['ctr_rolling_mean'] = features['ctr'].rolling(window=5, min_periods=1).mean()
     features['ctr_rolling_std'] = features['ctr'].rolling(window=5, min_periods=1).std().fillna(0)
     
-    # CTR deviation from rolling mean
+    # deviation from rolling mean
     features['ctr_deviation'] = np.abs(features['ctr'] - features['ctr_rolling_mean'])
     
-    # IMPRESSION FRAUD
+    # Impression volume patterns
+    features['impression_rolling_mean'] = features['impression_count'].rolling(window=5, min_periods=1).mean()
+    features['impression_ratio'] = np.where(features['impression_rolling_mean'] > 0, features['impression_count'] / features['impression_rolling_mean'], 1.0)
     
-    features['impression_rolling_mean'] = features['impressions_mean'].rolling(window=5, min_periods=1).mean()
+
+    # IMPRESSION FRAUD FEATURES:
+
+    # change in impressions between consecutive hours
+    features['impression_velocity'] = features['impression_count'].diff().fillna(0)
     
-    # impression ratio (current vs rolling average)
-    features['impression_ratio'] = np.where(features['impression_rolling_mean'] > 0, features['impressions_mean'] / features['impression_rolling_mean'], 1.0)
+    # current impressions compared to 5 hour rolling average
+    features['impression_spike_ratio'] = np.where(
+        features['impression_rolling_mean'] > 0,
+        features['impression_count'] / features['impression_rolling_mean'],
+        1.0
+    )
     
-    # impression velocity (change between consecutive hours)
-    features['impression_velocity'] = features['impressions_mean'].diff().fillna(0)
+    # standard deviation of impressions over 24h, measures traffic stability
+    features['impression_volatility'] = features['impression_count'].rolling(
+        window=24,
+        min_periods=1
+    ).std().fillna(0)
     
-    # impression spike ratio (current vs 5-hour average)
-    features['impression_spike_ratio'] = np.where(features['impression_rolling_mean'] > 0, features['impressions_mean'] / features['impression_rolling_mean'], 1.0)
+    # flag for impressions exceeding 10x the rolling average
+    features['abnormal_volume'] = np.where(
+        features['impression_count'] > features['impression_rolling_mean'] * 10,
+        1,
+        0
+    )
+
+    # CLICK INJECTION FRAUD:
+
+    # current conversion rate compared to 5-hour rolling average
+    features['cvr_spike_ratio'] = np.where(
+        features['cvr'].rolling(window=5, min_periods=1).mean() > 0,
+        features['cvr'] / features['cvr'].rolling(window=5, min_periods=1).mean(),
+        1.0
+    )
     
-    # impression volatility
-    features['impression_volatility'] = features['impressions_mean'].rolling( window=24, min_periods=1).std().fillna(0)
+    # flag for conversions exceeding 3x the weekly average
+    features['suspicious_cvr'] = np.where(
+        features['cvr'] > features['cvr'].rolling(window=168, min_periods=1).mean() * 3,
+        1,
+        0
+    )
     
-    # abnormal volume flag
-    features['abnormal_volume'] = np.where(features['impressions_mean'] > features['impression_rolling_mean'] * 10, 1, 0)
-    
-    # CLICK INJECTION
-    
-    # CVR spike ratio
-    cvr_5h_mean = features['cvr'].rolling(window=5, min_periods=1).mean()
-    features['cvr_spike_ratio'] = np.where(cvr_5h_mean > 0, features['cvr'] / cvr_5h_mean, 1.0)
-    
-    # suspicious CVR (3x the weekly average)
-    cvr_weekly_mean = features['cvr'].rolling(window=168, min_periods=1).mean()
-    features['suspicious_cvr'] = np.where(features['cvr'] > cvr_weekly_mean * 3, 1, 0)
-    
-    # conversion clustering
-    daily_conversions = features['conversions_mean'].rolling(window=24, min_periods=1).sum()
-    features['conversion_clustering'] = np.where(daily_conversions > 0, features['conversions_mean'] / daily_conversions, 0.0)
-    
-    # fill any remaining not a number values (ml modell cannot handle not numbers)
-    features = features.fillna(0)
-    features = features.replace([np.inf, -np.inf], 0)
+    # proportion of daily conversions concentrated in current hour
+    features['conversion_clustering'] = (
+        features['conversion_count'].rolling(window=1).sum() /
+        features['conversion_count'].rolling(window=24, min_periods=1).sum().replace(0, 1)
+    )
     
     return features
 
@@ -282,20 +283,19 @@ class AnomalyDetection:
         raw_scores = self.model.decision_function(X)
         
         # converting raw scores to trust score (0-1 scale)
-        trust_scores = self.normalise_scores(raw_scores)
+        anomaly_scores = self.normalise_scores(raw_scores)
         
         # add results to the dataframe
-        features['anomaly_score'] = trust_scores
-        features['is_organic'] = (trust_scores >= self.threshold).astype(int)  # 1=organic, 0=non-organic
+        features['anomaly_score'] = anomaly_scores
+        features['is_organic'] = (anomaly_scores >= self.threshold).astype(int)  # 1=organic, 0=non-organic
         
         return features
     
     def normalise_scores(self, scores):
         """
-        converting raw anomaly scores to anomaly score [0-1].
-        I'm using the formula from ml pod doc:
-        T = 1 - (s - s_min) / (s_max - s_min)
-        
+        converting raw anomaly scores to trust score [0-1].
+        T = (s - s_min) / (s_max - s_min)
+
         Higher trust score = more organic
         Lower trust score = more suspicious
         """
@@ -306,14 +306,13 @@ class AnomalyDetection:
         if s_max - s_min < 1e-9:
             return np.full_like(scores, 0.5)
         
-        # normalising the score using trust score formula
-        # isolation forests return higher (less negative) scores for normal data
-        # so I flip it: trust score = 1 - normalised score
+        # IsolationForest decision_function: higher (less negative) = more normal.
+        # Normalise directly so that min raw score → 0.0 (fraud) and max → 1.0 (organic).
         normalised = (scores - s_min) / (s_max - s_min)
-        trust_score = 1 - normalised
+        anomaly_score = normalised
         
         # round to 2 decimal points and make sure it's between 0 and 1
-        return np.clip(np.round(trust_score, 2), 0.0, 1.0)
+        return np.clip(np.round(anomaly_score, 2), 0.0, 1.0)
     
     def get_model_logs(self, predictions, model_name="isolation_forest_v1"):
         """
@@ -330,7 +329,7 @@ class AnomalyDetection:
             ))
         return logs
 
-class CTRFraudDetection(AnomalyDetection):
+class CtrFraudDetection(AnomalyDetection):
     # An Isolation Forest just for the CTR fraud detection
     
     def __init__(self, contamination=0.05, threshold=0.7):
@@ -352,7 +351,7 @@ class ImpressionFraudDetection(AnomalyDetection):
         
         # impression-related features
         self.feature_cols = [
-            'impressions_mean',
+            'impression_count',
             'impression_ratio',
             'impression_velocity',
             'impression_spike_ratio',
@@ -361,7 +360,7 @@ class ImpressionFraudDetection(AnomalyDetection):
         ]
 
 
-class ClickInjectionDetection(AnomalyDetection):
+class ClickInjectionDetector(AnomalyDetection):
     # An isolation forest for the click injection fraud detection
 
     # NO TIMING FEATURES, uses only CVR patterns
@@ -379,7 +378,7 @@ class ClickInjectionDetection(AnomalyDetection):
 
 
 # freezing the model
-def save_model(anomaly_detector: AnomalyDetection, filepath = 'app/ml/models/_isolation_forest.joblib'):
+def save_model(anomaly_detector, filepath = 'app/ml/models/_isolation_forest.joblib'):
     """
     freezing (saving) a trained model to a .joblib file
         
@@ -396,7 +395,7 @@ def save_model(anomaly_detector: AnomalyDetection, filepath = 'app/ml/models/_is
     joblib.dump(anomaly_detector, filepath, compress = 3)
 
 
-def load_model(filepath= 'app/ml/models/_isolation_forest.joblib') -> AnomalyDetection:
+def load_model(filepath= 'app/ml/models/_isolation_forest.joblib'):
     """
     unfreezing (loading) a previously saved model
 
@@ -410,7 +409,7 @@ def load_model(filepath= 'app/ml/models/_isolation_forest.joblib') -> AnomalyDet
     
 def train_isolation_forest(df: pd.DataFrame, contamination: float = 0.05, threshold: float = 0.7) -> pd.DataFrame:
     """
-    Train model and return predictions with trust_score and is_organic columns.
+    Train model and return predictions with anomaly_score and is_organic columns.
     
     """
     # creating an instance of the anomaly_detection (contamination, threshold) class
@@ -424,87 +423,76 @@ def train_isolation_forest(df: pd.DataFrame, contamination: float = 0.05, thresh
     return predictions
 
 def train_multiple_detection_model(
-       df: pd.DataFrame,
-    contamination: float = 0.05,
+    df: pd.DataFrame,
+    contamination: float | dict = 0.05,
     threshold: float = 0.7
-) -> tuple[pd.DataFrame, tuple]: 
+) -> tuple[pd.DataFrame, tuple]:
+    """Train three fraud-type detectors.
 
-    # train seperate isolation forests, one for each fraud type
-    # Returns:
-    #   - preditions: individual fraud score and overall score
-    #   - models
-    
-    ctr_detector = CTRFraudDetection(contamination, threshold)
-    impression_detector = ImpressionFraudDetection(contamination, threshold)
-    click_detector = ClickInjectionDetection(contamination, threshold)
+    contamination may be a single float (applied to all models) or a dict with
+    keys 'ctr_fraud', 'impression_fraud', 'click_injection'.
+    """
+    if isinstance(contamination, dict):
+        c_ctr   = contamination.get('ctr_fraud', 0.05)
+        c_imp   = contamination.get('impression_fraud', 0.05)
+        c_click = contamination.get('click_injection', 0.05)
+    else:
+        c_ctr = c_imp = c_click = contamination
+
+    ctr_detector = CtrFraudDetection(c_ctr, threshold)
+    impression_detector = ImpressionFraudDetection(c_imp, threshold)
+    click_detector = ClickInjectionDetector(c_click, threshold)
     
     # training each model
     ctr_detector.fit(df)
     impression_detector.fit(df)
     click_detector.fit(df)
     
-    # ----
-
-    # continuous score 
-    features = compute_features(df)
+    # get predictions from each
+    ctr_pred = ctr_detector.predict(df)
+    imp_pred = impression_detector.predict(df)
+    click_pred = click_detector.predict(df)
     
-    # feature matrices for each model
-    X_ctr = features[ctr_detector.feature_cols].fillna(0)
-    X_impression = features[impression_detector.feature_cols].fillna(0)
-    X_injection = features[click_detector.feature_cols].fillna(0)
-    
-    # decision scores from each model (continuous!!)
-    ctr_decision = ctr_detector.model.decision_function(X_ctr)
-    impression_decision = impression_detector.model.decision_function(X_impression)
-    injection_decision = click_detector.model.decision_function(X_injection)
-    
-    # normalise to between 0 and 1 range (0=fraud, 1=organic)
-    scaler = MinMaxScaler()
-    ctr_normalised = scaler.fit_transform(ctr_decision.reshape(-1, 1)).flatten()
-    impression_normalised = scaler.fit_transform(impression_decision.reshape(-1, 1)).flatten()
-    injection_normalised = scaler.fit_transform(injection_decision.reshape(-1, 1)).flatten()
-    
+    # combining into one dataframe
     result = df.copy()
-    result['ctr_anomaly_score'] = ctr_normalised
-    result['impression_anomaly_score'] = impression_normalised
-    result['click_injection_anomaly_score'] = injection_normalised
+    result['ctr_fraud_score'] = ctr_pred['anomaly_score']
+    result['impression_fraud_score'] = imp_pred['anomaly_score']
+    result['click_injection_score'] = click_pred['anomaly_score']
     
-    # anomaly score = minimum of the three (worst score)
+    # overall trust score = minimum of the three (worst score)
     result['anomaly_score'] = result[[
-        'ctr_anomaly_score',
-        'impression_anomaly_score',
-        'click_injection_anomaly_score'
+        'ctr_fraud_score',
+        'impression_fraud_score',
+        'click_injection_score'
     ]].min(axis=1)
     
-    # organic flag
+    # overall organic flag
     result['is_organic'] = (result['anomaly_score'] >= threshold).astype(int)
-
-
+    
     # fraud type flags (which fraud was detected)
-    result['has_ctr_fraud'] = (result['ctr_anomaly_score'] < threshold).astype(int)
-    result['has_impression_fraud'] = (result['impression_anomaly_score'] < threshold).astype(int)
-    result['has_click_injection'] = (result['click_injection_anomaly_score'] < threshold).astype(int)
-
-    # determine primary fraud type (lowest score = most anomalous)
-    fraud_scores = result[['ctr_anomaly_score', 'impression_anomaly_score', 'click_injection_anomaly_score']]
+    result['has_ctr_fraud'] = (result['ctr_fraud_score'] < threshold).astype(int)
+    result['has_impression_fraud'] = (result['impression_fraud_score'] < threshold).astype(int)
+    result['has_click_injection'] = (result['click_injection_score'] < threshold).astype(int)
+    
+    # Determine primary fraud type (lowest score = most suspicious)
+    fraud_scores = result[['ctr_fraud_score', 'impression_fraud_score', 'click_injection_score']]
+    fraud_type_map = {0: 'ctr', 1: 'impression', 2: 'click_injection'}
     result['primary_fraud_type'] = fraud_scores.idxmin(axis=1).map({
-        'ctr_anomaly_score': 'ctr',
-        'impression_anomaly_score': 'impression',
-        'click_injection_anomaly_score': 'click_injection'
+        'ctr_fraud_score': 'ctr',
+        'impression_fraud_score': 'impression',
+        'click_injection_score': 'click_injection'
     })
     
-    # If organic, set fraud type to 'none'
+    # if it is organic then set fraud type to 'none'
     result.loc[result['is_organic'] == 1, 'primary_fraud_type'] = 'none'
-    # ----
     
     return result, (ctr_detector, impression_detector, click_detector)
 
 def run_full_pipeline(
-    session: Session,
     start_date,
     end_date,
     publisher_id = None,
-    model_name: str = "isolation_forest_v2",
+    model_name: str = "isolation_forest_v1",
     contamination: float = 0.05,
     threshold: float = 0.7
 ) -> dict:
@@ -517,31 +505,30 @@ def run_full_pipeline(
     # wrap in try/except
     try:
         # fetch raw data from database
-        derived_data = fetch_derived_metrics(session, start_date, end_date, publisher_id)
+        raw_data = fetch_raw_data(start_date, end_date, publisher_id)
         
-        if derived_data.empty:
+        if raw_data.empty:
             return {
                 "status": "error",
                 "error_message": "No data found for the specified date range"
             }
         
         
-        
         # train the model and get predictions
         predictions = train_isolation_forest(
-            derived_data, 
+            raw_data, 
             contamination=contamination, 
             threshold=threshold
         )
         
         
         # log results back to database
-        log_results_to_db(session, predictions, model_name=model_name)
+        log_results_to_db(predictions, model_name=model_name)
                 
         # return success dictionary with details
         return {
             "status": "success",
-            "records_processed": len(derived_data),
+            "records_processed": len(raw_data),
             "records_logged": len(predictions)
         }
     
@@ -557,76 +544,99 @@ def run_full_pipeline(
 
 
 
-def convert_raw_to_derived(df: pd.DataFrame) -> pd.DataFrame:
-    # converting raw publisher data to derived metrics
-    derived = df.copy()
-    derived = derived.rename(columns={
-        'impression_count': 'impressions_mean',
-        'click_count': 'clicks_mean',
-        'conversion_count': 'conversions_mean'
-    })
 
-    derived['impressions_std'] = 0.0
-    derived['clicks_std'] = 0.0
-    derived['conversions_std'] = 0.0
-    
-    # weighted means
-    derived['impressions_weighted_mean'] = derived['impressions_mean']
-    derived['clicks_weighted_mean'] = derived['clicks_mean']
-    derived['conversions_weighted_mean'] = derived['conversions_mean']
-    
-    # Sample size = 1 
-    derived['sample_size'] = 1
 
-    derived['campaign_id'] = 'test_campaign'
-    
-    return derived
 
 
 # TRAINING AND FREEZING THE MODELS
 
 if __name__ == "__main__":
-
+    print("\n" + "=" * 80)
+    print("TRAINING AND FREEZING MODELS V2")
+    print("=" * 80)
+    
     from datetime import datetime, timedelta
     from app.ml.publishers import publisher_catalog
     import pandas as pd
     
+    print("\n[1/5] Generating training data from publishers...")
     
     data = []
     start_time = datetime(2026, 1, 1, 0, 0, 0)
     
-    for pub_name, publisher in publisher_catalog.items():
-        
+    for pub_id, pub_info in publisher_catalog.items():
+        print(f"      Generating {pub_info['name']}...")
+        generator = pub_info["generator"]
+
         for hour in range(200):
             timestamp = start_time + timedelta(hours=hour)
             settings = {'timestamp': timestamp}
-            ts, impressions, clicks, conversions = publisher["generator"].publisher_data_next(settings)
-            
+            ts, impressions, clicks, conversions = generator.publisher_data_next(settings)
+
             data.append({
                 'bucket_timestamp': ts,
-                'publisher_id': pub_name,
+                'publisher_id': pub_id,
                 'impression_count': impressions,
                 'click_count': clicks,
                 'conversion_count': conversions
             })
     
     df = pd.DataFrame(data)
+    print(f"     Generated {len(df)} rows from {len(publisher_catalog)} publishers")
     
-    df_derived = convert_raw_to_derived(df)
-    
+    print("\n[2/5] Computing features...")
+    df_features = compute_features(df)
+    print(f"  Computed {len(df_features.columns)} features")
+
+    # print("\n[3/5] Computing per-model contamination from Markov stationary distributions...")
+    # rows_per_publisher = 200
+    # total_rows = len(publisher_catalog) * rows_per_publisher
+    # contamination: dict[str, float] = {'ctr_fraud': 0.0, 'impression_fraud': 0.0, 'click_injection': 0.0}
+    # for pub_info in publisher_catalog.values():
+    #     for fraud_type, prob in pub_info['fraud_probabilities'].items():
+    #         contamination[fraud_type] += prob * rows_per_publisher / total_rows
+    # print(f"     ctr_fraud:       {contamination['ctr_fraud']:.4f}")
+    # print(f"     impression_fraud:{contamination['impression_fraud']:.4f}")
+    # print(f"     click_injection: {contamination['click_injection']:.4f}")
+    contamination = 0.04
+
     predictions, (ctr_model, impression_model, click_model) = train_multiple_detection_model(
-        df_derived,
-        contamination=0.1,
+        df_features,
+        contamination=contamination,
         threshold=0.7
     )
-
+    print(" 3 models trained")
+    
+    print("\n[4/5] Freezing models to disk...")
+    
     save_model(ctr_model, 'app/ml/models/ctr_fraud_detector_v2.joblib')
+    print("      ctr_fraud_detector_v2.joblib")
+    
     save_model(impression_model, 'app/ml/models/impression_fraud_detector_v2.joblib')
+    print("      impression_fraud_detector_v2.joblib")
+    
     save_model(click_model, 'app/ml/models/click_injection_detector_v2.joblib')
+    print("      click_injection_detector_v2.joblib")
+    
+    print("\n[5/5] Training results:")
     
     total_fraud = len(predictions[predictions['is_organic'] == 0])
     total_organic = len(predictions[predictions['is_organic'] == 1])
     
+    print(f"      Total: {len(predictions)} samples")
+    print(f"      Organic: {total_organic} ({total_organic/len(predictions)*100:.1f}%)")
+    print(f"      Fraud: {total_fraud} ({total_fraud/len(predictions)*100:.1f}%)")
+    
+    print("\n      Fraud breakdown:")
     for fraud_type in ['ctr', 'impression', 'click_injection', 'none']:
         count = len(predictions[predictions['primary_fraud_type'] == fraud_type])
-   
+        print(f"        - {fraud_type}: {count} ({count/len(predictions)*100:.1f}%)")
+    
+    print("\n" + "=" * 80)
+    print("3 MODELS FROZEN AND READY")
+    print("=" * 80)
+    print("\nFrozen models saved to:")
+    print("  • app/ml/models/ctr_fraud_detector_v2.joblib")
+    print("  • app/ml/models/impression_fraud_detector_v2.joblib")
+    print("  • app/ml/models/click_injection_detector_v2.joblib")
+    print("\nYou can now commit and push these files!\n")
