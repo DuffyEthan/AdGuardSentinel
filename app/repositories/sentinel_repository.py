@@ -7,9 +7,10 @@ from sqlalchemy import func, desc, asc, and_, text
 from app.db.models import Publishers, ModelLogs, RawMetrics, DerivedMetrics
 from app.repositories.base import BaseRepository
 
-# A publisher is considered suspicious when its trust score (0–1 from the ML
-# model) falls below this value, i.e. anomaly_score = 1 - trust >= 0.7.
-TRUST_THRESHOLD = 0.3          # anomaly score above (1 - this) → suspicious
+# model_logs.score is an anomaly score (0 = normal, 1 = fully anomalous).
+# Trust score is derived as (1 - score); see the publisher_trust_score SQL view.
+SUSPICIOUS_THRESHOLD = 0.3   # view trust_score below this (×100) → suspicious
+EVIDENCE_THRESHOLD = 0.7     # raw anomaly score above this → high-confidence fraud event
 
 
 class SentinelRepository(BaseRepository):
@@ -37,12 +38,12 @@ class SentinelRepository(BaseRepository):
         return self.session.query(func.count(Publishers.publisher_id)).scalar() or 0
 
     def get_suspicious_publisher_count(self, since: datetime) -> int:
-        # Suspicious = time-weighted trust score below TRUST_THRESHOLD (0–100 scale).
+        # Suspicious = time-weighted trust score (from view) below threshold.
         count = self.session.execute(
             text(
                 "SELECT COUNT(*) FROM publisher_trust_score WHERE trust_score < :threshold"
             ),
-            {"threshold": TRUST_THRESHOLD * 100},
+            {"threshold": SUSPICIOUS_THRESHOLD * 100},
         ).scalar()
         return count or 0
 
@@ -66,7 +67,7 @@ class SentinelRepository(BaseRepository):
             self.session.query(func.count())
             .select_from(ModelLogs)
             .filter(
-                ModelLogs.score > (1 - TRUST_THRESHOLD),
+                ModelLogs.score > EVIDENCE_THRESHOLD,
                 ModelLogs.log_timestamp >= since,
             )
             .scalar()
@@ -120,8 +121,7 @@ class SentinelRepository(BaseRepository):
                 .first()
             )
 
-            # Instant anomaly score for the table column (1 = fully anomalous).
-            # model_logs.score IS the anomaly score (0 = normal, 1 = fraud).
+            # Anomaly score direct from the ML model (0 = normal, 1 = fully anomalous).
             anomaly_score = round(float(latest_log.score), 4) if latest_log else 0.0
 
             # Trust score: from the publisher_trust_score view (0–100).
@@ -174,7 +174,7 @@ class SentinelRepository(BaseRepository):
             self.session.query(ModelLogs.log_timestamp)
             .filter(
                 ModelLogs.publisher_id == publisher_id,
-                ModelLogs.score > (1 - TRUST_THRESHOLD),
+                ModelLogs.score > EVIDENCE_THRESHOLD,
             )
             .order_by(desc(ModelLogs.log_timestamp))
             .first()
@@ -226,7 +226,7 @@ class SentinelRepository(BaseRepository):
                 func.count().label("events"),
             )
             .filter(
-                ModelLogs.score > (1 - TRUST_THRESHOLD),
+                ModelLogs.score > EVIDENCE_THRESHOLD,
                 ModelLogs.log_timestamp >= cutoff,
             )
             .group_by(day_col)
@@ -268,7 +268,7 @@ class SentinelRepository(BaseRepository):
             )
             .filter(
                 ModelLogs.publisher_id == publisher_id,
-                ModelLogs.score > (1 - TRUST_THRESHOLD),
+                ModelLogs.score > EVIDENCE_THRESHOLD,
                 ModelLogs.log_timestamp >= t1,
                 ModelLogs.log_timestamp <= t2,
             )
