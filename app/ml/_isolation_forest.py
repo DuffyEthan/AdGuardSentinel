@@ -186,7 +186,10 @@ def compute_features(df):
 
     # IMPRESSION FRAUD — pre-computed mean is the rolling average
     features['impression_ratio'] = np.where(features['impressions_mean'] > 0, features['impression_count'] / features['impressions_mean'], 1.0)
-    features['impression_velocity'] = features['impression_count'].diff().fillna(0)
+    features['impression_velocity'] = (
+        features.groupby('publisher_id')['impression_count']
+        .transform(lambda x: x.diff().fillna(0))
+    )
     features['impression_spike_ratio'] = features['impression_ratio']  # same signal
     features['impression_volatility'] = features['impressions_std']    # pre-computed
     features['abnormal_volume'] = np.where(features['impression_count'] > features['impressions_mean'] * 10, 1, 0)
@@ -207,7 +210,7 @@ def compute_features(df):
 # isolation forest anomaly detection 
 class AnomalyDetection:
     
-    def __init__(self, contamination=0.05, threshold=0.7):
+    def __init__(self, contamination=0.1, threshold=0.7):
         """
         contamination=0.05 => we expect 5% of data to be non-organic (fake engagement)
         threshold=0.7 => trust scores below 0.7 are flagged as non-organic
@@ -553,7 +556,7 @@ def run_full_pipeline(
 
 def convert_raw_to_derived(df: pd.DataFrame) -> pd.DataFrame:
     """Compute derived metrics from raw counts (used for training with synthetic data)."""
-    derived = df.copy().sort_values('bucket_timestamp')
+    derived = df.copy().sort_values(['publisher_id', 'bucket_timestamp'])
 
     window = 24
     for raw_col, prefix in [
@@ -561,11 +564,21 @@ def convert_raw_to_derived(df: pd.DataFrame) -> pd.DataFrame:
         ('click_count', 'clicks'),
         ('conversion_count', 'conversions'),
     ]:
-        derived[f'{prefix}_mean'] = derived[raw_col].rolling(window=window, min_periods=1).mean()
-        derived[f'{prefix}_std'] = derived[raw_col].rolling(window=window, min_periods=1).std().fillna(0)
-        derived[f'{prefix}_weighted_mean'] = derived[f'{prefix}_mean']  # equal weights for synthetic data
+        pass
+        # derived[f'{prefix}_mean'] = (
+        #     derived.groupby('publisher_id')[raw_col]
+        #     .transform(lambda x: x.rolling(window=window, min_periods=1).mean())
+        # )
+        # derived[f'{prefix}_std'] = (
+        #     derived.groupby('publisher_id')[raw_col]
+        #     .transform(lambda x: x.rolling(window=window, min_periods=1).std().fillna(0))
+        # )
+        # derived[f'{prefix}_weighted_mean'] = derived[f'{prefix}_mean']
 
-    derived['sample_size'] = derived['impression_count'].rolling(window=window, min_periods=1).count()
+    derived['sample_size'] = (
+        derived.groupby('publisher_id')['impression_count']
+        .transform(lambda x: x.rolling(window=window, min_periods=1).count())
+    )
     derived['campaign_id'] = 'test_campaign'
 
     return derived
