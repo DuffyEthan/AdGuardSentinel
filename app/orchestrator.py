@@ -44,6 +44,7 @@ from app.fastapi.services.derived_metrics_service import compute_and_store
 from app.ml._isolation_forest import *
 from app.ml.time_series_data_generator import upsert_raw_metrics
 from app.ml.publishers import campaign_catalog, publisher_catalog
+from app.repositories.derived_metrics_repository import DerivedMetricsRepository
 from app.repositories.model_logs_repository import ModelLogsRepository
 from app.repositories.raw_metrics_repository import RawMetricsRepository
 
@@ -223,6 +224,7 @@ def step_ml_inference(
     Returns the number of model_logs rows written, or 0 if skipped.
     """
     raw_repo = RawMetricsRepository(session)
+    derived_repo = DerivedMetricsRepository(session)
     # Use current_sim_time + 1 minute so the row we just wrote
     # (at current_sim_time) is included in the window.
     upper_bound = current_sim_time + timedelta(minutes=1)
@@ -243,7 +245,7 @@ def step_ml_inference(
         return 0
 
     # Convert ORM rows to a DataFrame.
-    df = pd.DataFrame(
+    raw_df = pd.DataFrame(
         [
             {
                 "bucket_timestamp": r.bucket_timestamp,
@@ -255,14 +257,43 @@ def step_ml_inference(
             for r in rows
         ]
     )
-    df["bucket_timestamp"] = pd.to_datetime(df["bucket_timestamp"], utc=True)
+    raw_df["bucket_timestamp"] = pd.to_datetime(raw_df["bucket_timestamp"], utc=True)
+
+    derived_rows = derived_repo.get_last_n_before(
+        t=upper_bound,
+        n=ML_WINDOW_SIZE,
+        publisher_id=publisher_id,
+        campaign_id=campaign_id,
+    )
+    derived_df = pd.DataFrame(
+        [
+            {
+                "bucket_timestamp": r.bucket_timestamp,
+                "publisher_id": r.publisher_id,
+                "impressions_mean": r.impressions_mean,
+                "clicks_mean": r.clicks_mean,
+                "conversions_mean": r.conversions_mean,
+                "impressions_std": r.impressions_std,
+                "clicks_std": r.clicks_std,
+                "conversions_std": r.conversions_std,
+                "impressions_weighted_mean": r.impressions_weighted_mean,
+                "clicks_weighted_mean": r.clicks_weighted_mean,
+                "conversions_weighted_mean": r.conversions_weighted_mean,
+                "sample_size": r.sample_size,
+            }
+            for r in derived_rows
+        ]
+    )
+    derived_df["bucket_timestamp"] = pd.to_datetime(derived_df["bucket_timestamp"], utc=True)
+
+    df = raw_df.merge(derived_df, on=["bucket_timestamp", "publisher_id"], how="inner")
 
     # Run each model and collect normalized trust scores (model.predict handles
     # feature engineering internally and returns scores already in [0, 1]).
     per_model_scores: dict[str, np.ndarray] = {}
     for fraud_type, model in models.items():
         pred_df = model.predict(df)
-        per_model_scores[fraud_type] = pred_df["trust_score"].values
+        per_model_scores[fraud_type] = pred_df["anomaly_score"].values
 
     # Combined trust score = element-wise minimum across all 3 models.
     all_scores = np.stack(list(per_model_scores.values()), axis=0)

@@ -2,7 +2,7 @@ from app.ml.markov import MarkovDataGenerator
 from datetime import datetime
 from typing import Any
 import numpy as np
-from app.ml.types import InternalState, DataPacket
+from app.ml.ml_types import InternalState, DataPacket
 
 InternalState = dict[str, Any]
 DataPacket = tuple[datetime, int, int, int]

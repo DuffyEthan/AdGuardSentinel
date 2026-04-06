@@ -10,7 +10,6 @@ from sklearn.preprocessing import MinMaxScaler
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 import uuid
-from app.db.session import get_session
 
 
 def fetch_derived_metrics(session: Session, start_date, end_date, publisher_id=None) -> pd.DataFrame:
@@ -338,15 +337,6 @@ class CTRFraudDetection(AnomalyDetection):
             'ctr_rolling_mean',
             'ctr_rolling_std',
             'ctr_deviation',
-            'click_count',
-            'clicks_mean',
-            'clicks_std',
-            'clicks_weighted_mean',
-            'impression_count',
-            'impressions_mean',
-            'impressions_std',
-            'impressions_weighted_mean',
-            'sample_size',
         ]
 
 class ImpressionFraudDetection(AnomalyDetection):
@@ -358,15 +348,11 @@ class ImpressionFraudDetection(AnomalyDetection):
         # impression-related features
         self.feature_cols = [
             'impression_count',
-            'impressions_mean',
-            'impressions_std',
-            'impressions_weighted_mean',
             'impression_ratio',
             'impression_velocity',
             'impression_spike_ratio',
             'impression_volatility',
             'abnormal_volume',
-            'sample_size',
         ]
 
 
@@ -384,14 +370,6 @@ class ClickInjectionDetection(AnomalyDetection):
             'cvr_spike_ratio',
             'suspicious_cvr',
             'conversion_clustering',
-            'conversion_count',
-            'conversions_mean',
-            'conversions_std',
-            'conversions_weighted_mean',
-            'click_count',
-            'clicks_mean',
-            'clicks_std',
-            'sample_size',
         ]
 
 
