@@ -34,12 +34,11 @@ def get_trust_score_explanation(
         .first()
     )
 
-    if latest_log is None:
-        anomaly_score = 0.0
-    else:
-        anomaly_score = float(latest_log.score)
+    # model_logs.score IS the anomaly score (0 = normal, 1 = fraud).
+    anomaly_score = float(latest_log.score) if latest_log is not None else 0.0
 
-    trust_score = round((1 - anomaly_score) * 100)
+    # Trust score comes from the view (time-weighted, 0–100).
+    trust_score = round(repo.get_trust_score_from_view(publisher_id))
 
     derived = repo.get_publisher_latest_derived(publisher_id, as_of)
     baselines = repo.get_network_baselines(as_of)

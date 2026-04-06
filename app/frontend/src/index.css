@@ -567,36 +567,51 @@ a:hover {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  border: 1px solid var(--border-light);
+  border-radius: 16px;
+  padding: 1.25rem;
+  background: var(--panel-bg);
+  box-shadow: 0 2px 12px var(--panel-shadow);
 }
 
 .sentinel-assistant__header {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .sentinel-assistant__dot {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: var(--accent);
+  background: #34c759;
   flex-shrink: 0;
+  box-shadow: 0 0 6px rgba(52, 199, 89, 0.5);
 }
 
 .sentinel-assistant__title {
   margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
 }
 
 .sentinel-assistant__select {
   width: 100%;
-  padding: 0.45rem 0.75rem;
+  padding: 0.5rem 0.75rem;
   border-radius: 10px;
   border: 1px solid var(--border-light);
   background: var(--bg-secondary);
   color: var(--text-primary);
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   cursor: pointer;
   transition: border-color 0.2s ease;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%235a6a7a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  padding-right: 2rem;
 }
 
 .sentinel-assistant__select:focus {
@@ -615,7 +630,7 @@ a:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.55rem 0.85rem;
+  padding: 0.6rem 0.85rem;
   border-radius: 10px;
   border: 1px solid var(--border-subtle);
   background: var(--bg-primary);
@@ -627,11 +642,16 @@ a:hover {
   transition: background 0.15s ease, border-color 0.15s ease;
 }
 
-.sentinel-action-btn:hover {
+.sentinel-action-btn:hover:not(:disabled) {
   background: rgba(94, 196, 204, 0.12);
   border-color: var(--accent);
   transform: none;
   box-shadow: none;
+}
+
+.sentinel-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .sentinel-action-btn em {
@@ -646,17 +666,33 @@ a:hover {
 }
 
 .sentinel-assistant__messages {
-  height: 200px;
+  min-height: 180px;
+  max-height: 340px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
-  padding: 0.25rem 0;
+  padding: 0.5rem 0.25rem;
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+  scroll-behavior: smooth;
+}
+
+/* Scrollbar styling */
+.sentinel-assistant__messages::-webkit-scrollbar {
+  width: 5px;
+}
+.sentinel-assistant__messages::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sentinel-assistant__messages::-webkit-scrollbar-thumb {
+  background: var(--border-light);
+  border-radius: 4px;
 }
 
 .sentinel-message {
   font-size: 0.85rem;
-  line-height: 1.45;
+  line-height: 1.5;
 }
 
 .sentinel-message--assistant {
@@ -676,10 +712,13 @@ a:hover {
 .sentinel-message__warn-icon {
   color: #e8a030;
   margin-right: 0.3rem;
+  font-size: 0.95rem;
 }
 
 .sentinel-message__text {
   margin: 0 0 0.25rem;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .sentinel-message__bullets {
@@ -687,12 +726,55 @@ a:hover {
   padding: 0;
   color: var(--text-secondary);
   font-size: 0.82rem;
+  list-style: disc;
 }
 
 .sentinel-message__bullets li {
-  margin-bottom: 0.2rem;
+  margin-bottom: 0.25rem;
+  line-height: 1.45;
 }
 
+/* ── Typing indicator ─────────────────────────────────────────── */
+.sentinel-typing {
+  padding: 0.25rem 0;
+}
+
+.sentinel-typing__dots {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 0.4rem 0;
+}
+
+.sentinel-typing__dots span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0.4;
+  animation: sentinel-bounce 1.4s ease-in-out infinite;
+}
+
+.sentinel-typing__dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.sentinel-typing__dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes sentinel-bounce {
+  0%, 80%, 100% {
+    opacity: 0.3;
+    transform: scale(0.8);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ── Input area ───────────────────────────────────────────────── */
 .sentinel-assistant__input {
   display: flex;
   gap: 0.5rem;
@@ -700,24 +782,45 @@ a:hover {
 
 .sentinel-input {
   flex: 1;
-  padding: 0.5rem 0.85rem;
-  border-radius: 10px;
+  padding: 0.55rem 0.85rem;
+  border-radius: 20px;
   border: 1px solid var(--border-light);
   background: var(--bg-secondary);
   color: var(--text-primary);
-  font-size: 0.9rem;
-  transition: border-color 0.2s ease;
+  font-size: 0.88rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .sentinel-input:focus {
   outline: none;
   border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(20, 145, 155, 0.15);
+}
+
+.sentinel-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .sentinel-send-btn {
   flex-shrink: 0;
-  padding: 0.5rem 1.1rem;
-  font-size: 0.9rem;
-  border-radius: 10px;
+  padding: 0.55rem 1.2rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  border-radius: 20px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s ease, opacity 0.15s ease;
+}
+
+.sentinel-send-btn:hover:not(:disabled) {
+  background: var(--accent-dark);
+}
+
+.sentinel-send-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 

@@ -22,15 +22,14 @@ class TestGetPublisherCount:
 
 class TestGetSuspiciousPublisherCount:
     def test_counts_only_suspicious(self, db_session, seed_data):
-        # PUB1 latest score = 0.12 (not suspicious)
-        # PUB2 latest score = 0.45 (suspicious, > 0.3)
+        # View-based: PUB1 trust≈65, PUB2 trust≈50 — both above threshold 30
         repo = SentinelRepository(db_session)
-        assert repo.get_suspicious_publisher_count(SINCE) == 1
+        assert repo.get_suspicious_publisher_count(SINCE) == 0
 
-    def test_returns_zero_outside_window(self, db_session, seed_data):
+    def test_returns_zero_when_all_above_threshold(self, db_session, seed_data):
+        # since parameter is unused; count is based on the view regardless
         repo = SentinelRepository(db_session)
-        future = datetime(2027, 1, 1, 0, 0, tzinfo=timezone.utc)
-        assert repo.get_suspicious_publisher_count(future) == 0
+        assert repo.get_suspicious_publisher_count(SINCE) == 0
 
 
 class TestGetAvgNetworkCtr:
@@ -50,11 +49,10 @@ class TestGetAvgNetworkCtr:
 
 class TestGetFraudEventCount:
     def test_counts_all_anomalous_rows(self, db_session, seed_data):
-        # PUB1 anomalous: 0.80 (h02), 0.75 (h03) = 2
-        # PUB2 anomalous: 0.50 (h02), 0.55 (h03), 0.45 (h04) = 3
-        # total = 5
+        # Anomalous = score > (1 - TRUST_THRESHOLD) = score > 0.7
+        # PUB1: 0.80 (h02), 0.75 (h03) = 2; PUB2: none > 0.7 = 0 → total = 2
         repo = SentinelRepository(db_session)
-        assert repo.get_fraud_event_count(SINCE) == 5
+        assert repo.get_fraud_event_count(SINCE) == 2
 
     def test_returns_zero_outside_window(self, db_session, seed_data):
         repo = SentinelRepository(db_session)
@@ -64,11 +62,10 @@ class TestGetFraudEventCount:
 
 class TestGetNetworkTrustBreakdown:
     def test_correct_breakdown(self, db_session, seed_data):
-        # PUB1 latest=0.12 -> trust=88 -> trusted
-        # PUB2 latest=0.45 -> trust=55 -> watchlist
+        # View-based: PUB1 trust≈65 -> watchlist (<70), PUB2 trust≈50 -> watchlist
         repo = SentinelRepository(db_session)
         breakdown = repo.get_network_trust_breakdown()
-        assert breakdown == {"trusted": 1, "watchlist": 1, "fraudulent": 0}
+        assert breakdown == {"trusted": 0, "watchlist": 2, "fraudulent": 0}
 
     def test_empty_when_no_logs(self, db_session):
         repo = SentinelRepository(db_session)
@@ -95,7 +92,7 @@ class TestGetPublisherTrustSummary:
             "anomaly_score",
             "ctr",
             "cvr",
-            "status",
+            "fraud_type",
             "last_alert_ts",
         }
         for row in rows:
@@ -107,23 +104,22 @@ class TestGetPublisherTrustSummary:
         pub1 = next(r for r in rows if r["publisher_id"] == str(PUB1_ID))
 
         assert pub1["publisher_name"] == "Acme Ads"
-        assert pub1["trust_score"] == 88  # round((1-0.12)*100)
+        # Trust score from view (quadratic-decay weighted average): ≈65
+        assert pub1["trust_score"] == 65
+        # anomaly_score = model_logs.score directly (0 = normal, 1 = fraud)
         assert abs(pub1["anomaly_score"] - 0.12) < 0.01
         # latest raw (h05): clk=7, imp=88 -> ctr=7.95%
         assert abs(pub1["ctr"] - 7.95) < 0.01
         # latest raw (h05): conv=1, clk=7 -> cvr=14.29%
         assert abs(pub1["cvr"] - 14.29) < 0.01
-        assert pub1["status"] == "Trusted"
 
-    def test_pub2_zero_conversions_status(self, db_session, seed_data):
+    def test_pub2_trust_score(self, db_session, seed_data):
         repo = SentinelRepository(db_session)
         rows = repo.get_publisher_trust_summary(AS_OF)
         pub2 = next(r for r in rows if r["publisher_id"] == str(PUB2_ID))
 
-        # PUB2 latest=0.45 -> trust=55 -> would be Watchlist
-        # but latest raw (h05): conv=0 -> Zero Conversions takes priority
-        assert pub2["trust_score"] == 55
-        assert pub2["status"] == "Zero Conversions"
+        # View-based: PUB2 trust≈50 (quadratic decay over h02–h04)
+        assert pub2["trust_score"] == 50
 
     def test_pub1_has_last_alert(self, db_session, seed_data):
         repo = SentinelRepository(db_session)
@@ -139,11 +135,11 @@ class TestGetLastAlertTimestamp:
         ts = repo.get_last_alert_timestamp(PUB1_ID)
         assert ts == datetime(2026, 1, 1, 3, 0, tzinfo=timezone.utc)
 
-    def test_pub2_last_alert(self, db_session, seed_data):
-        # PUB2 anomalous: 0.50 (h02), 0.55 (h03), 0.45 (h04) -> latest is h04
+    def test_pub2_no_last_alert(self, db_session, seed_data):
+        # PUB2 scores: 0.50, 0.55, 0.45 — none exceed threshold 0.7 → no alert
         repo = SentinelRepository(db_session)
         ts = repo.get_last_alert_timestamp(PUB2_ID)
-        assert ts == datetime(2026, 1, 1, 4, 0, tzinfo=timezone.utc)
+        assert ts is None
 
     def test_returns_none_for_unknown_publisher(self, db_session, seed_data):
         import uuid
@@ -158,17 +154,16 @@ class TestGetLastAlertTimestamp:
 
 class TestGetTrustScoreDistribution:
     def test_correct_buckets(self, db_session, seed_data):
-        # PUB1 trust=88 -> "80-90"
-        # PUB2 trust=55 -> "40-60"
+        # View-based: PUB1 trust≈65 -> "60-80", PUB2 trust≈50 -> "40-60"
         repo = SentinelRepository(db_session)
         dist = repo.get_trust_score_distribution(AS_OF)
 
         by_range = {d["range"]: d["count"] for d in dist}
-        assert by_range["80-90"] == 1
+        assert by_range["60-80"] == 1
         assert by_range["40-60"] == 1
         assert by_range["0-20"] == 0
         assert by_range["20-40"] == 0
-        assert by_range["60-80"] == 0
+        assert by_range["80-90"] == 0
         assert by_range["90-100"] == 0
 
     def test_returns_six_buckets(self, db_session, seed_data):
