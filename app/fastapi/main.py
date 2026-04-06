@@ -2,6 +2,7 @@ import uuid
 
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from datetime import datetime, timezone, timedelta
 from app.db.session import get_session
 
@@ -13,6 +14,7 @@ from app.repositories.raw_metrics_repository import RawMetricsRepository
 from app.repositories.sentinel_repository import SentinelRepository
 from app.fastapi.services import sentinel_service
 from app.fastapi.services import anomaly_periods_service
+from app.fastapi.services import gemini_service
 
 from app.ml._isolation_forest import run_full_pipeline
 
@@ -35,9 +37,6 @@ app.add_middleware(
 @app.get("/")
 def read_root():
     return {"Hello": "World"}
-
-
-
 
 
 @app.get("/model-logs/get-between")
@@ -68,15 +67,20 @@ def get_publishers(session: Session = Depends(get_session)):
         )
         campaign_id = raw.campaign_id if raw else None
         campaign = (
-            session.query(Campaigns).filter(Campaigns.campaign_id == campaign_id).first()
-            if campaign_id else None
+            session.query(Campaigns)
+            .filter(Campaigns.campaign_id == campaign_id)
+            .first()
+            if campaign_id
+            else None
         )
-        result.append({
-            "publisher_id": str(pub.publisher_id),
-            "publisher_name": pub.publisher_name,
-            "campaign_id": str(campaign_id) if campaign_id else None,
-            "campaign_name": campaign.campaign_name if campaign else None,
-        })
+        result.append(
+            {
+                "publisher_id": str(pub.publisher_id),
+                "publisher_name": pub.publisher_name,
+                "campaign_id": str(campaign_id) if campaign_id else None,
+                "campaign_name": campaign.campaign_name if campaign else None,
+            }
+        )
     return result
 
 
@@ -128,10 +132,14 @@ def get_pipeline_results(
     raw_metrics_repo = RawMetricsRepository(session)
     model_logs_repo = ModelLogsRepository(session)
 
-    all_raw_metrics = raw_metrics_repo.get_last_n_before(t2, 1000, publisher_id, campaign_id)
+    all_raw_metrics = raw_metrics_repo.get_last_n_before(
+        t2, 1000, publisher_id, campaign_id
+    )
     raw_metrics = [m for m in all_raw_metrics if t1 <= m.bucket_timestamp <= t2]
 
-    model_predictions_data = model_logs_repo.get_between(t1, t2, publisher_id, campaign_id)
+    model_predictions_data = model_logs_repo.get_between(
+        t1, t2, publisher_id, campaign_id
+    )
     model_predictions = []
     for pred_tuple in model_predictions_data:
         model_predictions.append(vars(pred_tuple[0]) | vars(pred_tuple[1]))
@@ -241,6 +249,75 @@ def sentinel_compare(
     return sentinel_service.compare_publisher_to_network(session, publisher_id, as_of)
 
 
+# ── Sentinel Assistant Chat (Gemini) ────────────────────────────────────
+
+
+class ChatHistoryItem(BaseModel):
+    role: str
+    content: str
+
+
+class ChatRequest(BaseModel):
+    message: str
+    context: dict | None = None
+    history: list[ChatHistoryItem] | None = None
+    action: str | None = None  # "explain" | "evidence" | "compare" | None
+    publisher_id: str | None = None
+
+
+@app.post("/sentinel/assistant/chat")
+def sentinel_chat(
+    req: ChatRequest,
+    session: Session = Depends(get_session),
+):
+    """
+    Send a message to the Sentinel Assistant powered by Gemini.
+
+    For preset actions (explain, evidence, compare), we first fetch the
+    structured data from the existing backend services and include it as
+    context for the Gemini call so the response is grounded in real data.
+    """
+    context = dict(req.context or {})
+    history = [h.model_dump() for h in (req.history or [])]
+
+    # If a preset action was used and we have a publisher_id, enrich context
+    if req.publisher_id and req.action:
+        try:
+            pub_uuid = uuid.UUID(req.publisher_id)
+            repo = SentinelRepository(session)
+            as_of = repo.get_sim_time()
+
+            if req.action == "explain":
+                explanation = sentinel_service.get_trust_score_explanation(
+                    session, pub_uuid, as_of
+                )
+                context["explanation"] = explanation
+
+            elif req.action == "compare":
+                comparison = sentinel_service.compare_publisher_to_network(
+                    session, pub_uuid, as_of
+                )
+                context["comparison"] = comparison
+
+            elif req.action == "evidence":
+                # Get evidence for the last 24 hours
+                t2 = as_of
+                t1 = as_of - timedelta(hours=24)
+                evidence = repo.get_anomaly_evidence(pub_uuid, t1, t2)
+                context["evidence"] = evidence
+
+        except Exception:
+            pass  # Fall through – Gemini will answer with whatever context we have
+
+    result = gemini_service.chat(
+        message=req.message,
+        context=context,
+        history=history,
+    )
+
+    return result
+
+
 # ── Anomaly Periods Endpoints ───────────────────────────────────────────
 
 
@@ -286,4 +363,3 @@ def backfill_anomaly_periods(
             for p in periods
         ],
     }
-

@@ -1,15 +1,12 @@
---
--- PostgreSQL database dump
---
-
-\restrict sA3qdxPkI4ZjoIG5ThfyP8VX6LXSxfHq713weyZulLzte5r9uR2SBnSptx5Krj9
+\restrict GGeQxvymX2W4CTE0pAh3Uq3scvK96F0rfS08r9z83G6BfUQQ07ejyGGZghK509z
 
 -- Dumped from database version 16.11
--- Dumped by pg_dump version 16.11
+-- Dumped by pg_dump version 18.1 (Homebrew)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -73,7 +70,7 @@ CREATE TABLE public.anomaly_periods (
 
 CREATE TABLE public.campaigns (
     campaign_id uuid NOT NULL,
-    publisher_id uuid NOT NULL,
+    campaign_name text NOT NULL,
     start_date timestamp with time zone NOT NULL,
     end_date timestamp with time zone
 );
@@ -135,6 +132,35 @@ CREATE TABLE public.model_runs (
     model_run_id uuid NOT NULL,
     model_name text NOT NULL
 );
+
+
+--
+-- Name: publisher_trust_score; Type: VIEW; Schema: public; Owner: -
+--
+
+CREATE VIEW public.publisher_trust_score AS
+ WITH publishers AS (
+         SELECT DISTINCT model_logs.publisher_id
+           FROM public.model_logs
+        ), latestlogs AS (
+         SELECT p.publisher_id,
+            l.latest_ts
+           FROM (publishers p
+             CROSS JOIN LATERAL ( SELECT m.log_timestamp AS latest_ts
+                   FROM public.model_logs m
+                  WHERE (m.publisher_id = p.publisher_id)
+                  ORDER BY m.log_timestamp DESC
+                 LIMIT 1) l)
+        )
+ SELECT ll.publisher_id,
+    ll.latest_ts,
+    (sum(((((1)::numeric - logs.score) * (100)::numeric) * power(((1)::numeric - (EXTRACT(epoch FROM (ll.latest_ts - logs.log_timestamp)) / (86400)::numeric)), (2)::numeric))) / NULLIF(sum(power(((1)::numeric - (EXTRACT(epoch FROM (ll.latest_ts - logs.log_timestamp)) / (86400)::numeric)), (2)::numeric)), (0)::numeric)) AS trust_score
+   FROM (latestlogs ll
+     JOIN LATERAL ( SELECT m.score,
+            m.log_timestamp
+           FROM public.model_logs m
+          WHERE ((m.publisher_id = ll.publisher_id) AND (m.log_timestamp >= (ll.latest_ts - '24:00:00'::interval)) AND (m.log_timestamp <= ll.latest_ts))) logs ON (true))
+  GROUP BY ll.publisher_id, ll.latest_ts;
 
 
 --
@@ -287,14 +313,6 @@ ALTER TABLE ONLY public.anomaly_periods
 
 
 --
--- Name: campaigns campaigns_publisher_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.campaigns
-    ADD CONSTRAINT campaigns_publisher_id_fkey FOREIGN KEY (publisher_id) REFERENCES public.publishers(publisher_id) ON DELETE CASCADE;
-
-
---
 -- Name: derived_metrics derived_metrics_campaign_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -362,5 +380,21 @@ ALTER TABLE ONLY public.raw_metrics
 -- PostgreSQL database dump complete
 --
 
-\unrestrict sA3qdxPkI4ZjoIG5ThfyP8VX6LXSxfHq713weyZulLzte5r9uR2SBnSptx5Krj9
+\unrestrict GGeQxvymX2W4CTE0pAh3Uq3scvK96F0rfS08r9z83G6BfUQQ07ejyGGZghK509z
 
+
+--
+-- Dbmate schema migrations
+--
+
+INSERT INTO public.schema_migrations (version) VALUES
+    ('000100'),
+    ('000200'),
+    ('000300'),
+    ('000400'),
+    ('000500'),
+    ('000600'),
+    ('000700'),
+    ('000800'),
+    ('000900'),
+    ('001000');
