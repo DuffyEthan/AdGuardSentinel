@@ -5,7 +5,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
 } from 'recharts';
 import { useTheme } from '../context/ThemeContext';
@@ -65,8 +64,8 @@ function TimeSeriesChart({ data, publisher, anomalies = [] }: TimeSeriesChartPro
       }}>
         {publisher} — Impressions, Clicks &amp; Conversions
       </h3>
-      <ResponsiveContainer width="100%" height="85%">
-        <LineChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 25 }}>
+      <ResponsiveContainer width="100%" height="78%">
+        <LineChart data={data} margin={{ top: 40, right: 30, left: 20, bottom: 30 }}>
           <CartesianGrid
             strokeDasharray="3 3"
             stroke={colors.grid}
@@ -109,16 +108,6 @@ function TimeSeriesChart({ data, publisher, anomalies = [] }: TimeSeriesChartPro
             }}
             labelFormatter={(label) => new Date(label as number).toLocaleString()}
           />
-          <Legend
-            formatter={(value) => {
-              const labels: Record<string, string> = {
-                impression_count: 'Impressions',
-                click_count: 'Clicks',
-                conversion_count: 'Conversions',
-              };
-              return labels[value] ?? value;
-            }}
-          />
           {renderAnomalyAreas(anomalies)}
           <Line
             type="monotone"
@@ -149,6 +138,28 @@ function TimeSeriesChart({ data, publisher, anomalies = [] }: TimeSeriesChartPro
           />
         </LineChart>
       </ResponsiveContainer>
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: '24px',
+        marginTop: '6px',
+        fontSize: 12,
+        color: colors.axis,
+      }}>
+        {([
+          { color: colors.line1, label: 'Impressions' },
+          { color: colors.line2, label: 'Clicks' },
+          { color: colors.line3, label: 'Conversions' },
+        ] as { color: string; label: string }[]).map(({ color, label }) => (
+          <span key={label} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <svg width="28" height="4" style={{ flexShrink: 0 }}>
+              <line x1="0" y1="2" x2="28" y2="2" stroke={color} strokeWidth="2.5" />
+            </svg>
+            {label}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
