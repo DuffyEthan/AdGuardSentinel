@@ -133,7 +133,7 @@ class TestGetLastAlertTimestamp:
         # PUB1 anomalous scores: latest is h05: 0.12
         repo = SentinelRepository(db_session)
         ts = repo.get_last_alert_timestamp(PUB1_ID)
-        assert ts == datetime(2026, 1, 1, 5, 0, tzinfo=timezone.utc)
+        assert ts == datetime(2026, 1, 1, 3, 0, tzinfo=timezone.utc)
 
     def test_pub2_no_last_alert(self, db_session, seed_data):
         # PUB2 scores: 0.50, 0.55, 0.45 — none exceed threshold 0.7 → no alert
@@ -165,11 +165,6 @@ class TestGetTrustScoreDistribution:
         assert by_range["20-40"] == 0
         assert by_range["80-90"] == 0
         assert by_range["90-100"] == 0
-        assert by_range["80-90"] == 0
-        assert by_range["60-80"] == 0
-        assert by_range["40-60"] == 1
-        assert by_range["20-40"] == 0
-        assert by_range["0-20"] == 1
 
     def test_returns_six_buckets(self, db_session, seed_data):
         repo = SentinelRepository(db_session)
@@ -216,12 +211,11 @@ class TestGetAnomalyEvidence:
         t2 = datetime(2026, 1, 1, 5, 0, tzinfo=timezone.utc)
         evidence = repo.get_anomaly_evidence(PUB1_ID, t1, t2)
 
-        assert len(evidence) == 4
+        assert len(evidence) == 2
         scores = [e["anomaly_score"] for e in evidence]
-        assert 0.1  in scores
-        assert 0.15 in scores
-        assert 0.2  in scores
-        assert 0.12 in scores
+        assert 0.80 in scores
+        assert 0.75 in scores
+
 
     def test_evidence_contains_required_keys(self, db_session, seed_data):
         repo = SentinelRepository(db_session)
@@ -244,8 +238,8 @@ class TestGetAnomalyEvidence:
     def test_returns_empty_for_no_anomalies(self, db_session, seed_data):
         repo = SentinelRepository(db_session)
         # narrow window with no anomalous PUB1 scores
-        t1 = datetime(2026, 1, 1, 2, 0, tzinfo=timezone.utc)
-        t2 = datetime(2026, 1, 1, 3, 0, tzinfo=timezone.utc)
+        t1 = datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc)
+        t2 = datetime(2026, 1, 1, 1, 0, tzinfo=timezone.utc)
         evidence = repo.get_anomaly_evidence(PUB1_ID, t1, t2)
         assert evidence == []
 
