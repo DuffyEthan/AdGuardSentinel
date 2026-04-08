@@ -24,6 +24,35 @@ from app.ml.publishers import publisher_catalog
 
 load_dotenv()
 
+def upsert_raw_metrics(session: Session, data_frame: pd.DataFrame) -> int:
+    """Insert or update a batch into raw_metrics (rerunnable via ON CONFLICT)."""
+    rows = [
+        {
+            "bucket_timestamp": row.bucket_timestamp,
+            "publisher_id": row.publisher_id,
+            "campaign_id": row.campaign_id,
+            "impression_count": int(row.impression_count),
+            "click_count": int(row.click_count),
+            "conversion_count": int(row.conversion_count),
+        }
+        for row in data_frame.itertuples(index=False)
+    ]
+
+    if not rows:
+        return 0
+
+    stmt = insert(RawMetrics).values(rows)
+    stmt = stmt.on_conflict_do_update(
+        constraint="raw_metrics_pkey",
+        set_={
+            "impression_count": stmt.excluded.impression_count,
+            "click_count": stmt.excluded.click_count,
+            "conversion_count": stmt.excluded.conversion_count,
+        },
+    )
+    session.execute(stmt)
+    session.flush()
+    return len(rows)
 
 @dataclass(frozen=True)
 class GeneratorConfig:
@@ -169,9 +198,8 @@ def main() -> None:
     run_forever = get_bool_from_env("RUN_FOREVER", config.run_forever)
     max_intervals = get_int_from_env("MAX_INTERVALS", config.max_intervals)
 
-    assert SessionLocal is not None, (
-        "DATABASE_URL is not configured; cannot create a session."
-    )
+    if SessionLocal is None:
+        raise RuntimeError("DATABASE_URL is not configured; cannot create a session.")
 
     # Build (generator, publisher_uuid, campaign_uuid) for every publisher.
     publishers = {

@@ -89,7 +89,7 @@ def log_results_to_db(predictions, model_name="isolation_forest_v1"):
     
     Arguments:
         predictions = DataFrame with columns including bucket_timestamp, 
-                     publisher_id, trust_score
+                     publisher_id, anomaly_score
         model_name = name of the model (default: "isolation_forest_v1")
     """
     # connecting to PostgreSQL
@@ -106,7 +106,7 @@ def log_results_to_db(predictions, model_name="isolation_forest_v1"):
             row['bucket_timestamp'],
             int(row['publisher_id']),
             model_name,
-            float(row['trust_score']),
+            float(row['anomaly_score']),
             fraud_type  # Add fraud type to log
         ))
     
@@ -283,11 +283,11 @@ class AnomalyDetection:
         raw_scores = self.model.decision_function(X)
         
         # converting raw scores to trust score (0-1 scale)
-        trust_scores = self.normalise_scores(raw_scores)
+        anomaly_scores = self.normalise_scores(raw_scores)
         
         # add results to the dataframe
-        features['trust_score'] = trust_scores
-        features['is_organic'] = (trust_scores >= self.threshold).astype(int)  # 1=organic, 0=non-organic
+        features['anomaly_score'] = anomaly_scores
+        features['is_organic'] = (anomaly_scores >= self.threshold).astype(int)  # 1=organic, 0=non-organic
         
         return features
     
@@ -309,10 +309,10 @@ class AnomalyDetection:
         # IsolationForest decision_function: higher (less negative) = more normal.
         # Normalise directly so that min raw score → 0.0 (fraud) and max → 1.0 (organic).
         normalised = (scores - s_min) / (s_max - s_min)
-        trust_score = normalised
+        anomaly_score = normalised
         
         # round to 2 decimal points and make sure it's between 0 and 1
-        return np.clip(np.round(trust_score, 2), 0.0, 1.0)
+        return np.clip(np.round(anomaly_score, 2), 0.0, 1.0)
     
     def get_model_logs(self, predictions, model_name="isolation_forest_v1"):
         """
@@ -325,7 +325,7 @@ class AnomalyDetection:
                 row['bucket_timestamp'],
                 int(row['publisher_id']),
                 model_name,
-                float(row['trust_score'])  # this is the score that goes to the DB
+                float(row['anomaly_score'])  # this is the score that goes to the DB
             ))
         return logs
 
@@ -409,7 +409,7 @@ def load_model(filepath= 'app/ml/models/_isolation_forest.joblib'):
     
 def train_isolation_forest(df: pd.DataFrame, contamination: float = 0.05, threshold: float = 0.7) -> pd.DataFrame:
     """
-    Train model and return predictions with trust_score and is_organic columns.
+    Train model and return predictions with anomaly_score and is_organic columns.
     
     """
     # creating an instance of the anomaly_detection (contamination, threshold) class
@@ -455,19 +455,19 @@ def train_multiple_detection_model(
     
     # combining into one dataframe
     result = df.copy()
-    result['ctr_fraud_score'] = ctr_pred['trust_score']
-    result['impression_fraud_score'] = imp_pred['trust_score']
-    result['click_injection_score'] = click_pred['trust_score']
+    result['ctr_fraud_score'] = ctr_pred['anomaly_score']
+    result['impression_fraud_score'] = imp_pred['anomaly_score']
+    result['click_injection_score'] = click_pred['anomaly_score']
     
     # overall trust score = minimum of the three (worst score)
-    result['trust_score'] = result[[
+    result['anomaly_score'] = result[[
         'ctr_fraud_score',
         'impression_fraud_score',
         'click_injection_score'
     ]].min(axis=1)
     
     # overall organic flag
-    result['is_organic'] = (result['trust_score'] >= threshold).astype(int)
+    result['is_organic'] = (result['anomaly_score'] >= threshold).astype(int)
     
     # fraud type flags (which fraud was detected)
     result['has_ctr_fraud'] = (result['ctr_fraud_score'] < threshold).astype(int)
