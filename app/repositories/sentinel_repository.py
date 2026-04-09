@@ -179,7 +179,7 @@ class SentinelRepository(BaseRepository):
             .order_by(desc(ModelLogs.log_timestamp))
             .first()
         )
-        return row[0] if row else None
+        return row[0].astimezone(timezone.utc) if row else None
 
     # ── 2.3 Trust Score Distribution Chart ──────────────────────────────
 

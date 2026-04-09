@@ -13,6 +13,8 @@ PUB1_ID = uuid.UUID("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11")
 PUB2_ID = uuid.UUID("b1ffcd00-ad1c-5f09-cc7e-7ccace491b22")
 CAMP1_ID = uuid.UUID("c2aade11-be2d-6a1a-dd8f-8ddbdf5a2c33")
 CAMP2_ID = uuid.UUID("d3bbef22-cf3e-7b2b-ee90-9eece06b3d44")
+CAMP1_NAME = "def"
+CAMP2_NAME = "abc"
 
 
 def _get_database_url() -> str:

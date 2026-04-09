@@ -130,7 +130,7 @@ class TestGetPublisherTrustSummary:
 
 class TestGetLastAlertTimestamp:
     def test_pub1_last_alert(self, db_session, seed_data):
-        # PUB1 anomalous scores: 0.80 (h02), 0.75 (h03) -> latest is h03
+        # PUB1 anomalous scores: latest is h05: 0.12
         repo = SentinelRepository(db_session)
         ts = repo.get_last_alert_timestamp(PUB1_ID)
         assert ts == datetime(2026, 1, 1, 3, 0, tzinfo=timezone.utc)
@@ -203,7 +203,6 @@ class TestGetDailyFraudEventCounts:
 
 # ── 2.5 Sentinel Assistant ──────────────────────────────────────────────
 
-
 class TestGetAnomalyEvidence:
     def test_pub1_anomalous_buckets(self, db_session, seed_data):
         # PUB1 anomalous: h02 (0.80), h03 (0.75)
@@ -216,6 +215,7 @@ class TestGetAnomalyEvidence:
         scores = [e["anomaly_score"] for e in evidence]
         assert 0.80 in scores
         assert 0.75 in scores
+
 
     def test_evidence_contains_required_keys(self, db_session, seed_data):
         repo = SentinelRepository(db_session)
