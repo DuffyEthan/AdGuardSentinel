@@ -20,7 +20,11 @@ cd sweng26_group20-adguardanomalydetection
 cp .secrets/.env.example .secrets/.env
 ```
 
-Edit this file if you need to change the default credentials. The defaults work out of the box for local development.
+Edit this .env file if you need to change the default credentials. The defaults work out of the box for local development (API key aside).
+
+### 2a. Provision Gemini API Key.
+
+Provision a Free-Tier gemini API key from [Google](https://aistudio.google.com/app/api-keys) and paste it into .env to enable AI features (not necessary to get a sense of the project, but the chatbot relies on this).
 
 ### 3. Install Python dependencies
 
