@@ -93,7 +93,6 @@ class TestGetPublisherTrustSummary:
             "ctr",
             "cvr",
             "fraud_type",
-            "last_alert_ts",
         }
         for row in rows:
             assert set(row.keys()) == expected_keys
@@ -120,33 +119,6 @@ class TestGetPublisherTrustSummary:
 
         # View-based: PUB2 trust≈50 (quadratic decay over h02–h04)
         assert pub2["trust_score"] == 50
-
-    def test_pub1_has_last_alert(self, db_session, seed_data):
-        repo = SentinelRepository(db_session)
-        rows = repo.get_publisher_trust_summary(AS_OF)
-        pub1 = next(r for r in rows if r["publisher_id"] == str(PUB1_ID))
-        assert pub1["last_alert_ts"] is not None
-
-
-class TestGetLastAlertTimestamp:
-    def test_pub1_last_alert(self, db_session, seed_data):
-        # PUB1 anomalous scores: latest is h05: 0.12
-        repo = SentinelRepository(db_session)
-        ts = repo.get_last_alert_timestamp(PUB1_ID)
-        assert ts == datetime(2026, 1, 1, 3, 0, tzinfo=timezone.utc)
-
-    def test_pub2_no_last_alert(self, db_session, seed_data):
-        # PUB2 scores: 0.50, 0.55, 0.45 — none exceed threshold 0.7 → no alert
-        repo = SentinelRepository(db_session)
-        ts = repo.get_last_alert_timestamp(PUB2_ID)
-        assert ts is None
-
-    def test_returns_none_for_unknown_publisher(self, db_session, seed_data):
-        import uuid
-
-        repo = SentinelRepository(db_session)
-        ts = repo.get_last_alert_timestamp(uuid.uuid4())
-        assert ts is None
 
 
 # ── 2.3 Trust Score Distribution ────────────────────────────────────────

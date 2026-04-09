@@ -21,6 +21,7 @@ variables:
   UV_CACHE_DIR: "${CI_PROJECT_DIR}/.cache/uv"
   PIP_CACHE_DIR: "${CI_PROJECT_DIR}/.cache/pip"
   SAST_EXCLUDED_PATHS: ".cache,.venv,app/frontend/node_modules,app/frontend/dist"
+  SECRET_DETECTION_EXCLUDED_PATHS: "db/.env.example,.secrets/.env.example,.gitlab-ci.yml"
 
 cache:
   paths:
