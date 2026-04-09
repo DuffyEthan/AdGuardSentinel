@@ -16,7 +16,6 @@ export interface PublisherRow {
   cvr: number;          // percentage value
   anomalyScore: number; // 0.0 – 1.0
   status: PublisherStatus;
-  lastAlert: string;    // human-readable, e.g. "2h ago" or "—"
   selected?: boolean;
 }
 

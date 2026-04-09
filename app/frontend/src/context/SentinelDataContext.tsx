@@ -12,7 +12,6 @@ interface ApiSentinelPublisher {
   ctr: number;
   cvr: number;
   fraud_type: string | null;
-  last_alert_ts: string | null;
 }
 
 interface ApiPublisher {
@@ -86,7 +85,6 @@ export function SentinelDataProvider({ children }: { children: ReactNode }) {
             }
             return computeStatus(p.trust_score, p.fraud_type, p.anomaly_score, prev);
           })(),
-            lastAlert: '—',
           };
         }));
       })

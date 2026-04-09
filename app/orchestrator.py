@@ -166,37 +166,29 @@ def step_derived_metrics(
     return result is not None
 
 
-def _normalize_scores(raw_scores: np.ndarray) -> np.ndarray:
-    """Normalize raw decision_function output from [-1, 1] to [0, 1].
-
-    Mapping:  -1 (fraud) -> 0.0,  +1 (organic) -> 1.0
-    """
-    return np.clip((raw_scores + 1.0) / 2.0, 0.0, 1.0)
-
-
 def _determine_fraud_type(
     per_model_scores: dict[str, np.ndarray],
-    trust_scores: np.ndarray,
+    anomaly_scores: np.ndarray,
     threshold: float = 0.5,
 ) -> list[str]:
     """Determine the primary fraud type for each row.
 
-    For rows where trust_score >= threshold, the fraud type is ``"none"``.
-    For anomalous rows, the fraud type is the model with the lowest score.
+    For rows where anomaly_score < threshold, the fraud type is ``"none"``.
+    For anomalous rows, the fraud type is the model with the highest score.
     """
-    n_rows = len(trust_scores)
+    n_rows = len(anomaly_scores)
     fraud_types: list[str] = []
 
     for i in range(n_rows):
-        if trust_scores[i] >= threshold:
+        if anomaly_scores[i] < threshold:
             fraud_types.append("none")
             continue
 
-        # Find the model with the lowest (most suspicious) score.
+        # Find the model with the highest (most suspicious) score.
         worst_type = "none"
-        worst_score = 1.0
+        worst_score = 0.0
         for fraud_type, scores in per_model_scores.items():
-            if scores[i] < worst_score:
+            if scores[i] > worst_score:
                 worst_score = scores[i]
                 worst_type = fraud_type
         fraud_types.append(worst_type)
@@ -217,7 +209,7 @@ def step_ml_inference(
       1. Fetch rolling window of raw_metrics rows.
       2. Compute features (CTR, CVR, rolling stats, etc.).
       3. Run each model's decision_function on its feature subset.
-      4. Normalize scores to [0, 1] and combine (element-wise min).
+      4. Normalize scores to [0, 1] and combine (element-wise max).
       5. Write one row per timestamp to model_logs.
       6. Call process_new_log() for the latest row to update anomaly_periods.
 
@@ -288,23 +280,23 @@ def step_ml_inference(
 
     df = raw_df.merge(derived_df, on=["bucket_timestamp", "publisher_id"], how="inner")
 
-    # Run each model and collect normalized trust scores (model.predict handles
+    # Run each model and collect normalized anomaly scores (model.predict handles
     # feature engineering internally and returns scores already in [0, 1]).
     per_model_scores: dict[str, np.ndarray] = {}
     for fraud_type, model in models.items():
         pred_df = model.predict(df)
         per_model_scores[fraud_type] = pred_df["anomaly_score"].values
 
-    # Combined trust score = element-wise minimum across all 3 models.
+    # Combined anomaly score = element-wise maximum across all 3 models (worst = highest).
     all_scores = np.stack(list(per_model_scores.values()), axis=0)
-    trust_scores: np.ndarray = np.min(all_scores, axis=0)
+    anomaly_scores: np.ndarray = np.max(all_scores, axis=0)
 
     # Determine primary fraud type per row.
-    fraud_types = _determine_fraud_type(per_model_scores, trust_scores)
+    fraud_types = _determine_fraud_type(per_model_scores, anomaly_scores)
 
     # Only log the latest row — ML runs every tick so each row is scored
     # exactly once when it becomes the most recent entry in the window.
-    latest_idx = len(trust_scores) - 1
+    latest_idx = len(anomaly_scores) - 1
     timestamps = df["bucket_timestamp"].tolist()
     log_tuples: list[tuple] = [
         (
@@ -312,7 +304,7 @@ def step_ml_inference(
             publisher_id,
             MODEL_NAME,
             fraud_types[latest_idx],
-            round(float(trust_scores[latest_idx]), 2),
+            round(float(anomaly_scores[latest_idx]), 2),
         )
     ]
 
@@ -325,7 +317,7 @@ def step_ml_inference(
         publisher_id=publisher_id,
         campaign_id=campaign_id,
         timestamp=timestamps[latest_idx],
-        score=float(trust_scores[latest_idx]),
+        score=float(anomaly_scores[latest_idx]),
     )
 
     return len(log_tuples)

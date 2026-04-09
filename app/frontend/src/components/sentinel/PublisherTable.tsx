@@ -69,7 +69,6 @@ function PublisherTable({ onShowDetails }: PublisherTableProps) {
             <th>CVR</th>
             <th>Anomaly Score</th>
             <th>Status</th>
-            <th>Last Alert</th>
           </tr>
         </thead>
         <tbody>
@@ -89,7 +88,6 @@ function PublisherTable({ onShowDetails }: PublisherTableProps) {
                   {pub.status}
                 </span>
               </td>
-              <td className="last-alert">{pub.lastAlert || '—'}</td>
             </tr>
           ))}
         </tbody>

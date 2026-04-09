@@ -228,7 +228,7 @@ class AnomalyDetection:
     def __init__(self, contamination=0.05, threshold=0.7):
         """
         contamination=0.05 => we expect 5% of data to be non-organic (fake engagement)
-        threshold=0.7 => trust scores below 0.7 are flagged as non-organic
+        threshold=0.7 => anomaly scores above 0.7 are flagged as non-organic
         """
         self.contamination = contamination
         self.threshold = threshold
@@ -281,38 +281,37 @@ class AnomalyDetection:
         
         # get raw anomaly scores from the model
         raw_scores = self.model.decision_function(X)
-        
-        # converting raw scores to trust score (0-1 scale)
+
+        # converting raw scores to anomaly score (0-1 scale), 1 = most anomalous
         anomaly_scores = self.normalise_scores(raw_scores)
-        
+
         # add results to the dataframe
         features['anomaly_score'] = anomaly_scores
-        features['is_organic'] = (anomaly_scores >= self.threshold).astype(int)  # 1=organic, 0=non-organic
+        features['is_organic'] = (anomaly_scores < self.threshold).astype(int)  # 1=organic, 0=non-organic
         
         return features
     
     def normalise_scores(self, scores):
         """
-        converting raw anomaly scores to trust score [0-1].
-        T = (s - s_min) / (s_max - s_min)
+        Convert raw decision_function output to anomaly score [0-1].
+        T = 1 - (s - s_min) / (s_max - s_min)
 
-        Higher trust score = more organic
-        Lower trust score = more suspicious
+        Higher anomaly score = more anomalous/suspicious (1 = most anomalous).
+        Lower anomaly score = more organic (0 = most organic).
         """
         s_min, s_max = scores.min(), scores.max()
-        
+
         # edge case where all scores are the same
-        # 1e-9 = 0.000000001 
+        # 1e-9 = 0.000000001
         if s_max - s_min < 1e-9:
             return np.full_like(scores, 0.5)
-        
+
         # IsolationForest decision_function: higher (less negative) = more normal.
-        # Normalise directly so that min raw score → 0.0 (fraud) and max → 1.0 (organic).
-        normalised = (scores - s_min) / (s_max - s_min)
-        anomaly_score = normalised
-        
+        # Invert so that min raw score → 1.0 (most anomalous) and max → 0.0 (most organic).
+        normalised = 1.0 - (scores - s_min) / (s_max - s_min)
+
         # round to 2 decimal points and make sure it's between 0 and 1
-        return np.clip(np.round(anomaly_score, 2), 0.0, 1.0)
+        return np.clip(np.round(normalised, 2), 0.0, 1.0)
     
     def get_model_logs(self, predictions, model_name="isolation_forest_v1"):
         """
@@ -459,25 +458,24 @@ def train_multiple_detection_model(
     result['impression_fraud_score'] = imp_pred['anomaly_score']
     result['click_injection_score'] = click_pred['anomaly_score']
     
-    # overall trust score = minimum of the three (worst score)
+    # overall anomaly score = maximum of the three (worst score = highest anomaly)
     result['anomaly_score'] = result[[
         'ctr_fraud_score',
         'impression_fraud_score',
         'click_injection_score'
-    ]].min(axis=1)
-    
+    ]].max(axis=1)
+
     # overall organic flag
-    result['is_organic'] = (result['anomaly_score'] >= threshold).astype(int)
-    
+    result['is_organic'] = (result['anomaly_score'] < threshold).astype(int)
+
     # fraud type flags (which fraud was detected)
-    result['has_ctr_fraud'] = (result['ctr_fraud_score'] < threshold).astype(int)
-    result['has_impression_fraud'] = (result['impression_fraud_score'] < threshold).astype(int)
-    result['has_click_injection'] = (result['click_injection_score'] < threshold).astype(int)
-    
-    # Determine primary fraud type (lowest score = most suspicious)
+    result['has_ctr_fraud'] = (result['ctr_fraud_score'] >= threshold).astype(int)
+    result['has_impression_fraud'] = (result['impression_fraud_score'] >= threshold).astype(int)
+    result['has_click_injection'] = (result['click_injection_score'] >= threshold).astype(int)
+
+    # Determine primary fraud type (highest score = most suspicious)
     fraud_scores = result[['ctr_fraud_score', 'impression_fraud_score', 'click_injection_score']]
-    fraud_type_map = {0: 'ctr', 1: 'impression', 2: 'click_injection'}
-    result['primary_fraud_type'] = fraud_scores.idxmin(axis=1).map({
+    result['primary_fraud_type'] = fraud_scores.idxmax(axis=1).map({
         'ctr_fraud_score': 'ctr',
         'impression_fraud_score': 'impression',
         'click_injection_score': 'click_injection'

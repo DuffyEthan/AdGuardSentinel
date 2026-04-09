@@ -152,8 +152,6 @@ class SentinelRepository(BaseRepository):
             else:
                 cvr = 0.0
 
-            last_alert = self.get_last_alert_timestamp(pub.publisher_id)
-
             result.append(
                 {
                     "publisher_id": str(pub.publisher_id),
@@ -163,23 +161,10 @@ class SentinelRepository(BaseRepository):
                     "ctr": ctr,
                     "cvr": cvr,
                     "fraud_type": latest_log.fraud_type if latest_log else None,
-                    "last_alert_ts": last_alert,
                 }
             )
 
         return result
-
-    def get_last_alert_timestamp(self, publisher_id: uuid.UUID) -> Optional[datetime]:
-        row = (
-            self.session.query(ModelLogs.log_timestamp)
-            .filter(
-                ModelLogs.publisher_id == publisher_id,
-                ModelLogs.score > EVIDENCE_THRESHOLD,
-            )
-            .order_by(desc(ModelLogs.log_timestamp))
-            .first()
-        )
-        return row[0].astimezone(timezone.utc) if row else None
 
     # ── 2.3 Trust Score Distribution Chart ──────────────────────────────
 

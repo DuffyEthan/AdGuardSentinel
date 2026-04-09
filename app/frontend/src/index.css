@@ -532,12 +532,6 @@ a:hover {
   font-size: 0.75rem;
 }
 
-/* Last alert text */
-.last-alert {
-  font-size: 0.82rem;
-  color: var(--text-secondary);
-}
-
 /* Status badges */
 .status-badge {
   display: inline-block;
