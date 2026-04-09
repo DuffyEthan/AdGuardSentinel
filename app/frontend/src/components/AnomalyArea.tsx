@@ -29,13 +29,15 @@ export function renderAnomalyAreas(anomalies: AnomalyEvent[]): ReactElement[] {
       stroke = '#cc3333',
     } = event;
 
+    const shortLabel = label.replace(/\s+\(peak\s+/, ' ').replace(')', ''); // "Warning (peak 82%)" → "Warning 82%"
+
     return [
       <ReferenceArea
         key={`anomaly-area-${i}`}
         x1={x1}
         x2={x2}
         fill={fill}
-        label={{ value: label, position: 'top', offset: 8, fill: stroke, fontSize: 12, fontWeight: 600 }}
+        label={{ value: shortLabel, position: 'top', offset: i % 2 === 0 ? 8 : 26, fill: stroke, fontSize: 12, fontWeight: 600 }}
       />,
       <ReferenceLine
         key={`anomaly-line-start-${i}`}
